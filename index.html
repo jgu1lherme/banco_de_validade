@@ -1814,9 +1814,45 @@
         <div class="modal modal-lg">
             <div class="modal-header">
                 <div class="modal-title" id="detailModalTitle">Detalhe do Produto</div>
-                <button class="modal-close" onclick="closeDetailModal()">✕</button>
+                <div style="display:flex;align-items:center;gap:8px">
+                    <button class="btn btn-ghost" id="detailEditBtn" onclick="openEditProductModal()"
+                        style="padding:6px 14px;font-size:.82rem">✏️ Editar Produto</button>
+                    <button class="modal-close" onclick="closeDetailModal()">✕</button>
+                </div>
             </div>
             <div class="modal-body" id="detailModalBody">
+            </div>
+        </div>
+    </div>
+
+    <!-- ===========================
+     MODAL: EDITAR PRODUTO
+============================ -->
+    <div class="modal-overlay" id="editProductModal">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title">✏️ Editar Produto</div>
+                <button class="modal-close" onclick="closeEditProductModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-grid">
+                    <div class="form-group form-col-full">
+                        <label class="form-label">Referência (Nome) <span class="req">*</span></label>
+                        <input class="form-input" id="ep_ref" placeholder="Ex: Analgésico 500mg">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Código (Cod)</label>
+                        <input class="form-input" id="ep_cod" placeholder="Ex: 001">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">EAN / Código de Barras</label>
+                        <input class="form-input" id="ep_ean" placeholder="Ex: 7891234567890">
+                    </div>
+                </div>
+                <div class="form-footer" style="margin-top:20px">
+                    <button class="btn btn-ghost" onclick="closeEditProductModal()">Cancelar</button>
+                    <button class="btn btn-primary" onclick="saveEditProduct()">✓ Salvar Alterações</button>
+                </div>
             </div>
         </div>
     </div>
@@ -2013,7 +2049,7 @@
         let dashExpiringAll = [];
         let dashExpiringFilter = '';
         let historyCurrentPage = 1;
-        const HISTORY_PAGE_SIZE = 15;
+        const HISTORY_PAGE_SIZE = 10;
         let pendingImportChanges = null;
         let pendingXmlImport = null;
         const IMPORT_PASSWORD = '7824';
@@ -2345,7 +2381,10 @@
                 const cod = String(norm['cod'] || '').trim();
                 const ean = String(norm['ean'] || '').trim();
                 const ref = String(norm['referencia'] || '').trim();
-                if (!pid) {
+                // O pid salvo pode estar desatualizado (produtos recriados com novo uid() a cada load).
+                // Verifica se o pid bate com algum produto carregado; senao resolve por cod/ean/ref.
+                const pidMatchesCurrent = pid && db.products.some(p => p.id === pid);
+                if (!pidMatchesCurrent) {
                     const prod = db.products.find(p =>
                         (cod && p.cod === cod) || (ean && p.ean === ean) ||
                         (ref && p.referencia.toLowerCase() === ref.toLowerCase())
@@ -2382,6 +2421,7 @@
                     id: String(norm['id'] || '').trim() || uid(),
                     type: tipo,
                     pid: pid || '',
+                    referencia: ref || '',
                     lote,
                     qty: isNaN(qty) ? 0 : qty,
                     note,
@@ -2564,18 +2604,29 @@
         // ============================================================
         function formatDate(iso) {
             if (!iso) return '—';
-            const [y, m, d] = iso.split('-');
+            // Normaliza: aceita '2026-08-01T03:00:00.000Z' ou '2026-08-01' ou '01/08/2026'
+            let s = String(iso).trim();
+            if (s.includes('T')) s = s.slice(0, 10); // remove parte de horário
+            if (s.includes('/')) {
+                // já está no formato DD/MM/YYYY — retorna direto
+                return s;
+            }
+            const [y, m, d] = s.split('-');
+            if (!y || !m || !d) return '—';
             return `${d}/${m}/${y}`;
         }
 
         function parseDate(ddmmyyyy) {
             if (!ddmmyyyy) return null;
+            let s = String(ddmmyyyy).trim();
+            // Já é ISO com horário: '2026-08-01T03:00:00.000Z' → trunca
+            if (s.includes('T')) s = s.slice(0, 10);
             // Accept DD/MM/YYYY or YYYY-MM-DD
-            if (ddmmyyyy.includes('/')) {
-                const [d, m, y] = ddmmyyyy.split('/');
+            if (s.includes('/')) {
+                const [d, m, y] = s.split('/');
                 return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
             }
-            return ddmmyyyy;
+            return s;
         }
 
         function isoToday() {
@@ -2584,8 +2635,10 @@
 
         function daysUntil(isoDate) {
             if (!isoDate) return 9999;
+            let s = String(isoDate).trim();
+            if (s.includes('T')) s = s.slice(0, 10); // '2026-08-01T03:00:00.000Z' → '2026-08-01'
             const today = new Date(); today.setHours(0, 0, 0, 0);
-            const target = new Date(isoDate + 'T00:00:00');
+            const target = new Date(s + 'T00:00:00');
             return Math.ceil((target - today) / 86400000);
         }
 
@@ -2849,7 +2902,7 @@
       <div class="form-grid">
         <div class="form-group">
           <label class="form-label">Lote <span class="req">*</span></label>
-          <input class="form-input" id="f_lote_e" placeholder="Ex: L002">
+          <input class="form-input" id="f_lote_e" placeholder="Ex: L002" oninput="checkLoteExistente()">
         </div>
         <div class="form-group">
           <label class="form-label">Quantidade <span class="req">*</span></label>
@@ -2864,6 +2917,7 @@
           <input class="form-input" id="f_validade_e" placeholder="DD/MM/AAAA">
         </div>
       </div>
+      <div id="loteExistenteInfo" style="margin:0 0 8px"></div>
       <div class="form-footer">
         <button class="btn btn-ghost" onclick="backToMoveStep1()">← Voltar</button>
         <button class="btn btn-green" onclick="submitEntrada()">✓ Registrar Entrada</button>
@@ -2927,6 +2981,7 @@
             document.getElementById(hiddenId).value = pid;
             document.getElementById(listId).classList.remove('open');
             if (forBaixa) loadLotsForBaixa(pid);
+            else if (document.getElementById('f_lote_e')) checkLoteExistente();
         }
 
         function loadLotsForBaixa(pid) {
@@ -2964,7 +3019,7 @@
         // ============================================================
         //  SUBMIT HANDLERS
         // ============================================================
-        function submitCadastro() {
+        function submitCadastro(forceIncomplete) {
             const ref = document.getElementById('f_ref').value.trim();
             const cod = document.getElementById('f_cod').value.trim();
             const ean = document.getElementById('f_ean').value.trim();
@@ -2975,6 +3030,44 @@
 
             if (!ref) return toast('Informe a Referência (nome) do produto.', 'error');
             if (!lote) return toast('Informe o número do Lote.', 'error');
+
+            // Verificar duplicidade
+            const refNorm = ref.toLowerCase();
+            const codNorm = cod.toLowerCase();
+            const eanNorm = ean.toLowerCase();
+            const loteNorm = lote.toLowerCase();
+
+            const prodDupRef = db.products.find(p => p.referencia.toLowerCase() === refNorm);
+            if (prodDupRef) return toast(`Já existe um produto com a referência "${ref}".`, 'error');
+
+            if (cod) {
+                const prodDupCod = db.products.find(p => p.cod && p.cod.toLowerCase() === codNorm);
+                if (prodDupCod) return toast(`Já existe um produto com o código "${cod}" (${prodDupCod.referencia}).`, 'error');
+            }
+
+            if (ean) {
+                const prodDupEan = db.products.find(p => p.ean && p.ean.toLowerCase() === eanNorm);
+                if (prodDupEan) return toast(`Já existe um produto com o EAN "${ean}" (${prodDupEan.referencia}).`, 'error');
+            }
+
+            const loteDup = db.lots.find(l => l.lote.toLowerCase() === loteNorm);
+            if (loteDup) {
+                const prodLote = db.products.find(p => p.id === loteDup.productId);
+                return toast(`O lote "${lote}" já está cadastrado${prodLote ? ' em "' + prodLote.referencia + '"' : ''}.`, 'error');
+            }
+
+            // Aviso de campos incompletos
+            if (!forceIncomplete) {
+                const missing = [];
+                if (!cod) missing.push('Código');
+                if (!ean) missing.push('EAN');
+                if (missing.length) {
+                    const missingStr = missing.join(' e ');
+                    const desc = `O produto <strong>"${escHtml(ref)}"</strong> será cadastrado sem <strong>${missingStr}</strong>.<br><br>Você poderá adicionar ${missing.length > 1 ? 'essas informações' : 'essa informação'} depois, editando o produto.<br><br>Deseja continuar assim mesmo?`;
+                    confirmAction('⚠️', 'Cadastro incompleto', desc, () => submitCadastro(true), false);
+                    return;
+                }
+            }
 
             // Criar produto
             const pid = uid();
@@ -2996,12 +3089,51 @@
             toast(`Produto "${ref}" cadastrado com sucesso!`, 'success');
         }
 
+        function checkLoteExistente() {
+            const pid = document.getElementById('f_prod_id').value;
+            const lote = document.getElementById('f_lote_e').value.trim();
+            const infoDiv = document.getElementById('loteExistenteInfo');
+            const valInput = document.getElementById('f_validade_e');
+            if (!infoDiv || !valInput) return;
+
+            if (!pid || !lote) {
+                infoDiv.innerHTML = '';
+                valInput.disabled = false;
+                valInput.style.opacity = '';
+                valInput.value = '';
+                return;
+            }
+
+            const existing = db.lots.find(l => l.productId === pid && l.lote.toLowerCase() === lote.toLowerCase());
+            if (existing) {
+                // Lote já existe: travar validade e mostrar aviso
+                const valFormatada = formatDate(existing.dataValidade) || '—';
+                valInput.value = valFormatada;
+                valInput.disabled = true;
+                valInput.style.opacity = '0.6';
+                infoDiv.innerHTML = `<div style="display:flex;align-items:flex-start;gap:10px;background:var(--cyan-muted);border:1px solid var(--cyan);border-radius:8px;padding:11px 14px;font-size:.84rem;color:var(--text)">
+  <span style="font-size:1.1rem;line-height:1.2;flex-shrink:0">ℹ️</span>
+  <span>Lote <strong>${escHtml(existing.lote)}</strong> já existe com <strong>${existing.quantidade} unidades</strong> e validade <strong>${valFormatada}</strong>.<br>
+  A quantidade informada será <strong>somada</strong> ao estoque existente. A validade original <strong>não pode ser alterada</strong> nesta operação.</span>
+</div>`;
+            } else {
+                // Lote novo
+                valInput.disabled = false;
+                valInput.style.opacity = '';
+                infoDiv.innerHTML = `<div style="display:flex;align-items:center;gap:10px;background:var(--green-muted);border:1px solid var(--green);border-radius:8px;padding:10px 14px;font-size:.84rem;color:var(--text)">
+  <span style="font-size:1rem;flex-shrink:0">✨</span>
+  <span>Lote <strong>${escHtml(lote)}</strong> é novo — um novo registro de lote será criado.</span>
+</div>`;
+            }
+        }
+
         function submitEntrada() {
             const pid = document.getElementById('f_prod_id').value;
             const lote = document.getElementById('f_lote_e').value.trim();
             const qty = Number(document.getElementById('f_qty_e').value);
             const ent = document.getElementById('f_entrada_e').value.trim();
-            const val = document.getElementById('f_validade_e').value.trim();
+            const valInput = document.getElementById('f_validade_e');
+            const val = valInput ? valInput.value.trim() : '';
 
             if (!pid) return toast('Selecione um produto da lista.', 'error');
             if (!lote) return toast('Informe o número do Lote.', 'error');
@@ -3011,10 +3143,11 @@
             const prod = db.products.find(p => p.id === pid);
 
             if (existing) {
+                // Lote existente: soma quantidade, preserva SEMPRE a validade original
                 existing.quantidade += qty;
                 if (ent) existing.dataEntrada = parseDate(ent);
-                if (val) existing.dataValidade = parseDate(val);
-                toast(`Lote ${lote} atualizado: +${qty} unidades.`, 'success');
+                // dataValidade NÃO é atualizada — integridade preservada
+                toast(`Lote ${lote} atualizado: +${qty} unidades adicionadas.`, 'success');
             } else {
                 db.lots.push({
                     id: uid(), productId: pid, lote,
@@ -3118,18 +3251,79 @@
       </div>`;
             }).join('') : '<p style="color:var(--text3);font-size:.875rem;text-align:center;padding:20px">Sem lotes em estoque.</p>'}
   `;
+            document.getElementById('detailModal').dataset.pid = pid;
             openModal('detailModal');
         }
 
         function closeDetailModal() { closeModal('detailModal'); }
 
         // ============================================================
+        //  EDIT PRODUCT MODAL
+        // ============================================================
+        let _editingProductId = null;
+
+        function openEditProductModal() {
+            const titleEl = document.getElementById('detailModalTitle');
+            // Discover which product is open by matching the title to a product
+            // We store the id in a data attribute set when opening detail modal
+            const pid = document.getElementById('detailModal').dataset.pid;
+            if (!pid) return;
+            const prod = db.products.find(p => p.id === pid);
+            if (!prod) return;
+            _editingProductId = pid;
+            document.getElementById('ep_ref').value = prod.referencia || '';
+            document.getElementById('ep_cod').value = prod.cod || '';
+            document.getElementById('ep_ean').value = prod.ean || '';
+            openModal('editProductModal');
+        }
+
+        function closeEditProductModal() { closeModal('editProductModal'); }
+
+        function saveEditProduct() {
+            if (!_editingProductId) return;
+            const ref = document.getElementById('ep_ref').value.trim();
+            const cod = document.getElementById('ep_cod').value.trim();
+            const ean = document.getElementById('ep_ean').value.trim();
+
+            if (!ref) return toast('A Referência (nome) não pode ficar vazia.', 'error');
+
+            // Duplicate checks (excluding self)
+            const refNorm = ref.toLowerCase();
+            const dupRef = db.products.find(p => p.id !== _editingProductId && p.referencia.toLowerCase() === refNorm);
+            if (dupRef) return toast(`Já existe outro produto com a referência "${ref}".`, 'error');
+
+            if (cod) {
+                const dupCod = db.products.find(p => p.id !== _editingProductId && p.cod && p.cod.toLowerCase() === cod.toLowerCase());
+                if (dupCod) return toast(`Já existe outro produto com o código "${cod}" (${dupCod.referencia}).`, 'error');
+            }
+
+            if (ean) {
+                const dupEan = db.products.find(p => p.id !== _editingProductId && p.ean && p.ean.toLowerCase() === ean.toLowerCase());
+                if (dupEan) return toast(`Já existe outro produto com o EAN "${ean}" (${dupEan.referencia}).`, 'error');
+            }
+
+            const prod = db.products.find(p => p.id === _editingProductId);
+            prod.referencia = ref;
+            prod.cod = cod;
+            prod.ean = ean;
+
+            saveDB();
+            renderTable();
+            closeEditProductModal();
+            // Refresh detail modal with updated info
+            openDetailModal(_editingProductId);
+            toast(`Produto "${ref}" atualizado com sucesso!`, 'success');
+        }
+
+        // ============================================================
         //  HISTORY
         // ============================================================
         function addHistory(type, pid, lote, qty, note) {
+            const _prod = db.products.find(p => p.id === pid);
             db.history.unshift({
                 id: uid(),
                 type, pid, lote, qty, note,
+                referencia: _prod?.referencia || '',
                 operador: _currentOperator ? (_currentOperator.nome || _currentOperator.usuario) : '',
                 date: new Date().toISOString()
             });
@@ -3160,6 +3354,7 @@
 
             div.innerHTML = slice.map(h => {
                 const prod = db.products.find(p => p.id === h.pid);
+                const prodNome = prod?.referencia || h.referencia || '?';
                 const d = new Date(h.date);
                 const label = {
                     cadastro: 'Cadastro', entrada: 'Entrada', saida: 'Baixa',
@@ -3171,7 +3366,7 @@
                 return `<div class="history-item">
       <div class="history-icon ${col}">${icons[h.type] || '•'}</div>
       <div class="history-info">
-        <div class="history-title">${label} — ${escHtml(prod?.referencia || '?')} (Lote ${escHtml(h.lote || '—')})</div>
+        <div class="history-title">${label} — ${escHtml(prodNome)} (Lote ${escHtml(h.lote || '—')})</div>
         <div class="history-detail">${escHtml(h.note)} — ${h.qty} unidades</div>
         ${operadorHtml}
       </div>

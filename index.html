@@ -1132,6 +1132,10 @@
             background: var(--cyan-muted);
         }
 
+        .history-icon.importacao {
+            background: var(--amber-muted);
+        }
+
         .history-info {
             flex: 1;
         }
@@ -1151,6 +1155,86 @@
             font-size: .75rem;
             color: var(--text3);
             white-space: nowrap;
+        }
+
+        .history-operator {
+            font-size: .72rem;
+            color: var(--cyan-dim);
+            font-weight: 600;
+            margin-top: 4px;
+        }
+
+        .operator-badge {
+            font-size: .75rem;
+            color: var(--cyan);
+            background: var(--cyan-muted);
+            padding: 4px 10px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            max-width: 140px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .xml-item-card {
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 14px;
+            margin-bottom: 12px;
+            background: var(--surface2);
+        }
+
+        .xml-item-card.excluded {
+            opacity: .45;
+            pointer-events: none;
+        }
+
+        .xml-item-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+
+        .xml-item-title {
+            font-weight: 600;
+            font-size: .875rem;
+        }
+
+        .xml-item-meta {
+            font-size: .75rem;
+            color: var(--text2);
+            margin-top: 4px;
+        }
+
+        .xml-item-fields {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+        }
+
+        .xml-item-fields .form-group {
+            margin-bottom: 0;
+        }
+
+        .xml-match-ok {
+            color: var(--green);
+            font-size: .72rem;
+            font-weight: 600;
+        }
+
+        .xml-match-warn {
+            color: var(--amber);
+            font-size: .72rem;
+            font-weight: 600;
+        }
+
+        @media (max-width: 768px) {
+            .xml-item-fields {
+                grid-template-columns: 1fr;
+            }
         }
 
         /* ===== DASHBOARD ===== */
@@ -1354,6 +1438,39 @@
         </div>
     </div>
 
+    <!-- ===== IDENTIFICAÇÃO DO OPERADOR (após Google) ===== -->
+    <div id="operatorGate" class="auth-gate hidden">
+        <button type="button" class="theme-toggle auth-theme-toggle" onclick="toggleTheme()" aria-label="Alternar tema">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            </svg>
+        </button>
+        <div class="auth-card">
+            <img src="banco_de_validadesemfundo.png" alt="Banco de Validade" class="auth-logo">
+            <p class="auth-company" id="operatorCompany">Nova Alternativa</p>
+            <h2 style="font-size:1.2rem;margin-bottom:8px">Identificação do Operador</h2>
+            <p>Conta Google autorizada. Agora informe <strong>quem está operando</strong> o sistema neste momento.</p>
+            <div class="form-group" style="margin-bottom:12px;text-align:left">
+                <label class="form-label">Usuário <span class="req">*</span></label>
+                <input class="form-input" id="operatorUser" placeholder="Ex: operador1" autocomplete="username"
+                    onkeydown="if(event.key==='Enter') document.getElementById('operatorPassword')?.focus()">
+            </div>
+            <div class="form-group" style="margin-bottom:16px;text-align:left">
+                <label class="form-label">Senha <span class="req">*</span></label>
+                <input class="form-input" id="operatorPassword" type="password" placeholder="Senha do operador"
+                    autocomplete="current-password" onkeydown="if(event.key==='Enter') submitOperatorLogin()">
+            </div>
+            <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="submitOperatorLogin()">
+                ✓ Identificar e Entrar
+            </button>
+            <p id="operatorError" class="auth-error"></p>
+            <p style="font-size:.7rem;color:var(--text3);margin-top:12px;line-height:1.5">
+                Operadores cadastrados na aba <em>Operadores</em> da planilha Google Sheets.
+            </p>
+        </div>
+    </div>
+
     <div id="appContent" class="app-content locked">
 
         <!-- ===== TOP BAR ===== -->
@@ -1381,6 +1498,7 @@
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
                     </svg>
                 </button>
+                <span class="operator-badge" id="operatorBadge" title="" style="display:none"></span>
                 <span class="user-badge" id="userBadge" title=""></span>
                 <button class="btn-logout" id="logoutBtn" onclick="googleLogout()" style="display:none">Sair</button>
                 <div class="backup-badge">
@@ -1571,6 +1689,24 @@
                         </button>
                     </div>
                     <div class="dash-card">
+                        <div class="dash-card-title">📄 Importar Nota Fiscal (XML NFe)</div>
+                        <div class="upload-zone" onclick="document.getElementById('xmlFileInput').click()">
+                            <div style="font-size:2.5rem">🧾</div>
+                            <p>Clique para selecionar<br><strong style="color:var(--cyan)">.xml</strong> da NFe</p>
+                            <input type="file" id="xmlFileInput" accept=".xml" style="display:none"
+                                onchange="importXmlFile(event)">
+                        </div>
+                        <p style="font-size:.75rem;color:var(--text3);margin-top:12px;line-height:1.6">
+                            <strong style="color:var(--amber)">Importação por NF-e</strong> — extrai código, EAN, nome e
+                            quantidade do XML. Você revisa item a item, preenche <em>lote</em> e <em>data de
+                                validade</em> (obrigatórios) e confirma com senha.<br><br>
+                            Produtos não encontrados na base podem ser cadastrados na revisão.
+                        </p>
+                    </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:1fr;gap:20px;margin-bottom:24px">
+                    <div class="dash-card">
                         <div class="dash-card-title">📤 Exportar Dados</div>
                         <div style="display:flex;flex-direction:column;gap:12px;margin-top:8px">
                             <button class="btn btn-ghost" style="width:100%;justify-content:center"
@@ -1604,7 +1740,9 @@
                         📂 <strong style="color:var(--cyan)">Estoque:</strong> lido e salvo na planilha Google Sheets
                         (aba <em>Estoque</em>).<br>
                         📜 <strong style="color:var(--cyan)">Histórico:</strong> na mesma planilha (aba
-                        <em>Historico</em>).<br>
+                        <em>Historico</em>), com registro de <strong>quem fez</strong> cada ação.<br>
+                        👤 <strong style="color:var(--cyan)">Operadores:</strong> cadastrados na aba
+                        <em>Operadores</em> da planilha (usuário, senha, nome).<br>
                         Cada movimentação sincroniza automaticamente com a nuvem após login.<br>
                         🔐 <strong style="color:var(--green)">Segurança:</strong> apenas contas Google autorizadas podem
                         acessar.<br>
@@ -1697,6 +1835,24 @@
             <div class="form-footer" style="padding:0 24px 24px;margin-top:0;border-top:none">
                 <button class="btn btn-ghost" onclick="closeImportConfirmModal()">Cancelar</button>
                 <button class="btn btn-primary" onclick="confirmImportApply()">✓ Aplicar Modificações</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ===========================
+     MODAL: REVISÃO IMPORTAÇÃO XML NFe
+============================ -->
+    <div class="modal-overlay" id="xmlImportModal">
+        <div class="modal modal-lg">
+            <div class="modal-header">
+                <div class="modal-title">Revisar Importação da NFe</div>
+                <button class="modal-close" onclick="closeXmlImportModal()">✕</button>
+            </div>
+            <div class="modal-body" id="xmlImportBody"></div>
+            <div class="form-footer" style="padding:0 24px 24px;margin-top:0;border-top:none">
+                <button class="btn btn-ghost" onclick="closeXmlImportModal()">Cancelar</button>
+                <button class="btn btn-primary" onclick="confirmXmlImportApply()">✓ Importar Itens Selecionados</button>
             </div>
         </div>
     </div>
@@ -1817,6 +1973,9 @@
             const authCompany = document.getElementById('authCompany');
             if (authCompany) authCompany.textContent = companyName;
 
+            const operatorCompany = document.getElementById('operatorCompany');
+            if (operatorCompany) operatorCompany.textContent = companyName;
+
             const companyBadge = document.getElementById('companyBadge');
             if (companyBadge) companyBadge.textContent = companyName;
 
@@ -1840,7 +1999,8 @@
         let db = {
             products: [],
             lots: [],
-            history: []
+            history: [],
+            operadores: []
         };
 
         let currentMoveType = null;
@@ -1855,7 +2015,17 @@
         let historyCurrentPage = 1;
         const HISTORY_PAGE_SIZE = 15;
         let pendingImportChanges = null;
+        let pendingXmlImport = null;
         const IMPORT_PASSWORD = '7824';
+
+        // Operadores padrão (usados se a aba Operadores ainda não existir na planilha)
+        const DEFAULT_OPERADORES = [
+            { usuario: 'admin', senha: '7824', nome: 'Administrador', ativo: 'sim' },
+            { usuario: 'operador1', senha: '1234', nome: 'Operador 1', ativo: 'sim' },
+            { usuario: 'operador2', senha: '1234', nome: 'Operador 2', ativo: 'sim' }
+        ];
+
+        let _currentOperator = null;
 
         // ============================================================
         //  PERSISTENCE — Google Sheets + Drive (via Apps Script)
@@ -1869,7 +2039,7 @@
         // ============================================================
 
         const CLOUD_CONFIG = {
-            apiUrl: 'https://script.google.com/macros/s/AKfycbwLHPrSIDkDcn5J16D3rxPNcUEgx3EuAeGVf_bfAl5v5PwL70Z3WPzF0ByL0-B6S-RW1g/exec',
+            apiUrl: 'https://script.google.com/macros/s/AKfycbyFI6SHdnfqpotN4BGSZewY-0Zo6dQ-4E4aOdolZjSpzbgAfUDXhFlSNJPOY0l7f9e7Zg/exec',
             // Client ID OAuth (público — pode ficar no código). Crie em console.cloud.google.com
             googleClientId: '771002640166-7t218jfd3av1akcakiqr0lle3mo86u58.apps.googleusercontent.com'
         };
@@ -1891,10 +2061,99 @@
 
         function showAuthGate(msg) {
             document.getElementById('authGate').classList.remove('hidden');
+            document.getElementById('operatorGate').classList.add('hidden');
             document.getElementById('appContent').classList.add('locked');
             document.getElementById('logoutBtn').style.display = 'none';
             document.getElementById('userBadge').textContent = '';
+            _updateOperatorBadge();
             if (msg) document.getElementById('authError').textContent = msg;
+        }
+
+        function showOperatorGate(msg) {
+            document.getElementById('authGate').classList.add('hidden');
+            document.getElementById('operatorGate').classList.remove('hidden');
+            document.getElementById('appContent').classList.add('locked');
+            document.getElementById('operatorError').textContent = msg || '';
+            const userEl = document.getElementById('operatorUser');
+            const pwdEl = document.getElementById('operatorPassword');
+            if (userEl) userEl.value = '';
+            if (pwdEl) pwdEl.value = '';
+            setTimeout(() => userEl?.focus(), 200);
+        }
+
+        function hideOperatorGate() {
+            document.getElementById('operatorGate').classList.add('hidden');
+        }
+
+        function _updateOperatorBadge() {
+            const badge = document.getElementById('operatorBadge');
+            if (!badge) return;
+            if (_currentOperator) {
+                badge.textContent = '👤 ' + (_currentOperator.nome || _currentOperator.usuario);
+                badge.title = 'Operador: ' + (_currentOperator.nome || _currentOperator.usuario);
+                badge.style.display = 'inline-block';
+            } else {
+                badge.textContent = '';
+                badge.style.display = 'none';
+            }
+        }
+
+        function _getOperadoresList() {
+            return (db.operadores && db.operadores.length) ? db.operadores : DEFAULT_OPERADORES;
+        }
+
+        function _processOperadoresRows(rows) {
+            if (!rows || !rows.length) {
+                db.operadores = DEFAULT_OPERADORES.slice();
+                return;
+            }
+            if (Array.isArray(rows[0])) {
+                const headers = rows[0].map(h => String(h).toLowerCase().trim());
+                db.operadores = rows.slice(1).filter(r => r.some(c => c !== '' && c != null)).map(row => {
+                    const obj = {};
+                    headers.forEach((h, i) => { obj[h] = row[i] ?? ''; });
+                    return {
+                        usuario: String(obj.usuario || '').trim(),
+                        senha: String(obj.senha || '').trim(),
+                        nome: String(obj.nome || obj.usuario || '').trim(),
+                        ativo: String(obj.ativo || 'sim').trim().toLowerCase()
+                    };
+                }).filter(o => o.usuario && o.senha);
+            } else {
+                db.operadores = rows.map(r => ({
+                    usuario: String(r.usuario || '').trim(),
+                    senha: String(r.senha || '').trim(),
+                    nome: String(r.nome || r.usuario || '').trim(),
+                    ativo: String(r.ativo || 'sim').trim().toLowerCase()
+                })).filter(o => o.usuario && o.senha);
+            }
+            if (!db.operadores.length) db.operadores = DEFAULT_OPERADORES.slice();
+        }
+
+        function submitOperatorLogin() {
+            const user = document.getElementById('operatorUser')?.value.trim();
+            const pwd = document.getElementById('operatorPassword')?.value;
+            if (!user) return toast('Informe o usuário do operador.', 'error');
+            if (!pwd) return toast('Informe a senha do operador.', 'error');
+
+            const op = _getOperadoresList().find(o =>
+                o.usuario.toLowerCase() === user.toLowerCase() &&
+                o.senha === pwd &&
+                o.ativo !== 'nao' && o.ativo !== 'não' && o.ativo !== '0' && o.ativo !== 'false'
+            );
+
+            if (!op) {
+                document.getElementById('operatorError').textContent = 'Usuário ou senha incorretos.';
+                return;
+            }
+
+            _currentOperator = { usuario: op.usuario, nome: op.nome || op.usuario };
+            document.getElementById('operatorError').textContent = '';
+            hideOperatorGate();
+            hideAuthGate();
+            renderTable();
+            renderHistory();
+            toast('Operador identificado: ' + _currentOperator.nome, 'success');
         }
 
         function hideAuthGate() {
@@ -1905,6 +2164,7 @@
             badge.textContent = _googleUserEmail || '';
             badge.title = _googleUserEmail || '';
             document.getElementById('logoutBtn').style.display = _googleUserEmail ? 'inline-block' : 'none';
+            _updateOperatorBadge();
         }
 
         function parseJwtEmail(token) {
@@ -1923,11 +2183,8 @@
             document.getElementById('backupStatus').textContent = 'Verificando acesso…';
             try {
                 await cloudApiCall('ping');
-                hideAuthGate();
                 await loadDB();
-                renderTable();
-                renderHistory();
-                toast('Bem-vindo, ' + (_googleUserEmail || 'usuário') + '!', 'success');
+                showOperatorGate('');
             } catch (e) {
                 _googleIdToken = null;
                 _googleUserEmail = null;
@@ -1938,6 +2195,7 @@
         function googleLogout() {
             _googleIdToken = null;
             _googleUserEmail = null;
+            _currentOperator = null;
             if (window.google?.accounts?.id) {
                 google.accounts.id.disableAutoSelect();
             }
@@ -2041,6 +2299,7 @@
             if (!db.products) db.products = [];
             if (!db.lots) db.lots = [];
             if (!db.history) db.history = [];
+            if (!db.operadores) db.operadores = [];
             if (!_googleIdToken) return;
 
             try {
@@ -2048,6 +2307,13 @@
                 const result = await cloudApiCall('load');
                 const estoqueRows = result.data?.estoque || [];
                 const historicoRows = result.data?.historico || [];
+                const operadoresRows = result.data?.operadores || [];
+
+                if (operadoresRows.length > 1) {
+                    _processOperadoresRows(operadoresRows);
+                } else {
+                    _processOperadoresRows([]);
+                }
 
                 if (estoqueRows.length > 1) {
                     _loadedFromCloud = true;
@@ -2090,6 +2356,7 @@
                 const lote = String(norm['lote'] || '').trim();
                 const qty = Number(norm['quantidade']);
                 const note = String(norm['observacao'] || norm['note'] || '').trim();
+                const operador = String(norm['operador'] || norm['usuario'] || '').trim();
                 let dateIso = String(norm['date_iso'] || norm['dateiso'] || '').trim();
 
                 if (!dateIso) {
@@ -2118,6 +2385,7 @@
                     lote,
                     qty: isNaN(qty) ? 0 : qty,
                     note,
+                    operador,
                     date: dateIso
                 });
             });
@@ -2176,7 +2444,7 @@
         function _buildHistoricoRows() {
             const rows = [[
                 'id', 'data', 'hora', 'tipo', 'cod', 'ean', 'referencia',
-                'lote', 'quantidade', 'observacao', 'product_id', 'date_iso'
+                'lote', 'quantidade', 'observacao', 'product_id', 'date_iso', 'operador'
             ]];
             db.history.forEach(h => {
                 const prod = db.products.find(p => p.id === h.pid);
@@ -2188,7 +2456,8 @@
                     h.type,
                     prod?.cod || '', prod?.ean || '', prod?.referencia || '',
                     h.lote || '', h.qty,
-                    h.note || '', h.pid || '', h.date
+                    h.note || '', h.pid || '', h.date,
+                    h.operador || ''
                 ]);
             });
             return rows;
@@ -2216,7 +2485,7 @@
             if (typeof XLSX === 'undefined') return;
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.aoa_to_sheet(_buildHistoricoRows());
-            ws['!cols'] = [14, 12, 8, 10, 8, 18, 30, 10, 12, 40, 14, 22].map(w => ({ wch: w }));
+            ws['!cols'] = [14, 12, 8, 10, 8, 18, 30, 10, 12, 40, 14, 22, 16].map(w => ({ wch: w }));
             XLSX.utils.book_append_sheet(wb, ws, 'Historico');
             XLSX.writeFile(wb, 'historico/historico.xlsx');
         }
@@ -2861,6 +3130,7 @@
             db.history.unshift({
                 id: uid(),
                 type, pid, lote, qty, note,
+                operador: _currentOperator ? (_currentOperator.nome || _currentOperator.usuario) : '',
                 date: new Date().toISOString()
             });
             if (db.history.length > 500) db.history.pop();
@@ -2886,18 +3156,24 @@
             if (historyCurrentPage > pages) historyCurrentPage = pages;
 
             const slice = db.history.slice((historyCurrentPage - 1) * HISTORY_PAGE_SIZE, historyCurrentPage * HISTORY_PAGE_SIZE);
-            const icons = { cadastro: '🆕', entrada: '📥', saida: '📤' };
+            const icons = { cadastro: '🆕', entrada: '📥', saida: '📤', importacao: '📋', importacao_nfe: '🧾' };
 
             div.innerHTML = slice.map(h => {
                 const prod = db.products.find(p => p.id === h.pid);
                 const d = new Date(h.date);
-                const label = { cadastro: 'Cadastro', entrada: 'Entrada', saida: 'Baixa' }[h.type] || h.type;
-                const col = { cadastro: 'cadastro', entrada: 'entrada', saida: 'saida' }[h.type] || 'entrada';
+                const label = {
+                    cadastro: 'Cadastro', entrada: 'Entrada', saida: 'Baixa',
+                    importacao: 'Importação Planilha', importacao_nfe: 'Importação NFe'
+                }[h.type] || h.type;
+                const col = { cadastro: 'cadastro', entrada: 'entrada', saida: 'saida', importacao: 'importacao', importacao_nfe: 'importacao' }[h.type] || 'entrada';
+                const operadorHtml = h.operador
+                    ? `<div class="history-operator">👤 ${escHtml(h.operador)}</div>` : '';
                 return `<div class="history-item">
       <div class="history-icon ${col}">${icons[h.type] || '•'}</div>
       <div class="history-info">
-        <div class="history-title">${label} — ${escHtml(prod?.referencia || '?')} (Lote ${escHtml(h.lote)})</div>
+        <div class="history-title">${label} — ${escHtml(prod?.referencia || '?')} (Lote ${escHtml(h.lote || '—')})</div>
         <div class="history-detail">${escHtml(h.note)} — ${h.qty} unidades</div>
+        ${operadorHtml}
       </div>
       <div class="history-time">${d.toLocaleDateString('pt-BR')} ${formatTime(d)}</div>
     </div>`;
@@ -3173,8 +3449,8 @@
                     if (newVal) depoisParts.push(`Val: ${formatDate(newVal)}`);
 
                     changes.push({
-                        produto: prodName, lote, campo: 'Novo lote',
-                        antes: '—', depois: depoisParts.join(' | '), isNew: true,
+                        produto: prodName, lote, campo: 'Novo lote', pid: prod.id,
+                        antes: '—', depois: depoisParts.join(' | '), isNew: true, qty: newQty,
                         apply: () => {
                             db.lots.push({
                                 id: uid(), productId: prod.id, lote,
@@ -3189,21 +3465,21 @@
 
                 if (qty !== null && qty !== existingLot.quantidade) {
                     changes.push({
-                        produto: prodName, lote, campo: 'Quantidade',
+                        produto: prodName, lote, campo: 'Quantidade', pid: prod.id, qty,
                         antes: String(existingLot.quantidade), depois: String(qty),
                         apply: () => { existingLot.quantidade = qty; }
                     });
                 }
                 if (ent && ent !== existingLot.dataEntrada) {
                     changes.push({
-                        produto: prodName, lote, campo: 'Data Entrada',
+                        produto: prodName, lote, campo: 'Data Entrada', pid: prod.id, qty: existingLot.quantidade,
                         antes: formatDate(existingLot.dataEntrada), depois: formatDate(ent),
                         apply: () => { existingLot.dataEntrada = ent; }
                     });
                 }
                 if (val && val !== existingLot.dataValidade) {
                     changes.push({
-                        produto: prodName, lote, campo: 'Data Validade',
+                        produto: prodName, lote, campo: 'Data Validade', pid: prod.id, qty: existingLot.quantidade,
                         antes: formatDate(existingLot.dataValidade), depois: formatDate(val),
                         apply: () => { existingLot.dataValidade = val; }
                     });
@@ -3283,12 +3559,16 @@
             }
             if (!pendingImportChanges) return;
 
-            pendingImportChanges.changes.forEach(c => c.apply());
+            pendingImportChanges.changes.forEach(c => {
+                c.apply();
+                addHistory('importacao', c.pid, c.lote, c.qty || 0, `Importação planilha — ${c.campo}: ${c.antes} → ${c.depois}`);
+            });
             const count = pendingImportChanges.changes.length;
             pendingImportChanges = null;
 
             saveDB();
             renderTable();
+            renderHistory();
             closeImportConfirmModal();
             toast(`${count} modificação(ões) aplicada(s) com sucesso!`, 'success');
         }
@@ -3296,6 +3576,264 @@
         function closeImportConfirmModal() {
             closeModal('importConfirmModal');
             pendingImportChanges = null;
+        }
+
+        // ---------- IMPORTAÇÃO XML NFe ----------
+        function _xmlLocalName(el) {
+            if (!el || !el.localName) return '';
+            return el.localName.replace(/^.*:/, '').toLowerCase();
+        }
+
+        function _xmlText(parent, tagName) {
+            if (!parent) return '';
+            const nodes = parent.getElementsByTagName('*');
+            for (let i = 0; i < nodes.length; i++) {
+                if (_xmlLocalName(nodes[i]) === tagName.toLowerCase()) {
+                    return (nodes[i].textContent || '').trim();
+                }
+            }
+            return '';
+        }
+
+        function _parseNFeDate(raw) {
+            if (!raw) return '';
+            const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+            return raw;
+        }
+
+        function parseNFeXml(xmlText) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(xmlText, 'text/xml');
+            if (doc.querySelector('parsererror')) throw new Error('XML inválido ou corrompido');
+
+            const allEls = doc.getElementsByTagName('*');
+            let infNFe = null;
+            for (let i = 0; i < allEls.length; i++) {
+                if (_xmlLocalName(allEls[i]) === 'infnfe') { infNFe = allEls[i]; break; }
+            }
+            if (!infNFe) throw new Error('Arquivo não parece ser uma NFe válida (infNFe não encontrado)');
+
+            const nNF = _xmlText(infNFe, 'nnf');
+            const dhEmi = _xmlText(infNFe, 'dhemi');
+            const chNFe = _xmlText(doc.documentElement, 'chnfe') || '';
+
+            const detNodes = [];
+            for (let i = 0; i < allEls.length; i++) {
+                if (_xmlLocalName(allEls[i]) === 'det') detNodes.push(allEls[i]);
+            }
+            if (!detNodes.length) throw new Error('Nenhum item de produto encontrado no XML');
+
+            const items = detNodes.map((det, idx) => {
+                let prod = null;
+                for (let j = 0; j < det.children.length; j++) {
+                    if (_xmlLocalName(det.children[j]) === 'prod') { prod = det.children[j]; break; }
+                }
+                if (!prod) {
+                    const inner = det.getElementsByTagName('*');
+                    for (let k = 0; k < inner.length; k++) {
+                        if (_xmlLocalName(inner[k]) === 'prod') { prod = inner[k]; break; }
+                    }
+                }
+                const cod = _xmlText(prod, 'cprod');
+                const ean = _xmlText(prod, 'cean').replace(/^SEM GTIN$/i, '');
+                const ref = _xmlText(prod, 'xprod') || cod;
+                const qty = Number(_xmlText(prod, 'qcom')) || Number(_xmlText(prod, 'qtrib')) || 0;
+                const matched = findProductForImport(cod, ean, ref);
+                return {
+                    idx,
+                    cod, ean, referencia: ref, qty,
+                    lote: '',
+                    entrada: _parseNFeDate(dhEmi),
+                    validade: '',
+                    include: true,
+                    isNew: !matched,
+                    pid: matched ? matched.id : null,
+                    prodName: matched ? matched.referencia : ref
+                };
+            });
+
+            return { nNF, dhEmi, chNFe, items };
+        }
+
+        function importXmlFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = e => {
+                try {
+                    const parsed = parseNFeXml(e.target.result);
+                    if (!parsed.items.length) return toast('Nenhum produto encontrado no XML.', 'info');
+                    pendingXmlImport = parsed;
+                    showXmlImportModal();
+                } catch (err) {
+                    toast('Erro ao ler XML: ' + err.message, 'error');
+                }
+            };
+            reader.readAsText(file, 'UTF-8');
+            event.target.value = '';
+        }
+
+        function showXmlImportModal() {
+            if (!pendingXmlImport) return;
+            const { nNF, dhEmi, chNFe, items } = pendingXmlImport;
+            let html = `<p style="color:var(--text2);font-size:.875rem;margin-bottom:12px;line-height:1.6">
+        Revise cada item da <strong>NF ${escHtml(nNF || '?')}</strong>.
+        Preencha lote e validade (obrigatórios). Desmarque ou remova itens que não deseja importar.
+    </p>`;
+            if (chNFe) {
+                html += `<p style="font-size:.72rem;color:var(--text3);margin-bottom:14px">Chave: ${escHtml(chNFe)}</p>`;
+            }
+
+            items.forEach((item, i) => {
+                const matchLabel = item.isNew
+                    ? '<span class="xml-match-warn">⚠ Produto novo — será cadastrado</span>'
+                    : '<span class="xml-match-ok">✓ Produto encontrado na base</span>';
+                html += `<div class="xml-item-card" id="xmlItem_${i}" data-idx="${i}">
+            <div class="xml-item-header">
+                <div>
+                    <div class="xml-item-title">${escHtml(item.referencia)}</div>
+                    <div class="xml-item-meta">
+                        Cod: ${escHtml(item.cod) || '—'} · EAN: ${escHtml(item.ean) || '—'} · Qtd: <strong>${item.qty}</strong>
+                    </div>
+                    <div style="margin-top:6px">${matchLabel}</div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+                    <label style="font-size:.75rem;display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <input type="checkbox" id="xmlInclude_${i}" ${item.include ? 'checked' : ''} onchange="toggleXmlItemInclude(${i})"> Importar
+                    </label>
+                    <button class="btn btn-ghost" style="padding:4px 10px;font-size:.72rem" onclick="removeXmlItem(${i})">✕ Remover</button>
+                </div>
+            </div>
+            <div class="xml-item-fields">
+                <div class="form-group">
+                    <label class="form-label">Lote <span class="req">*</span></label>
+                    <input class="form-input" id="xmlLote_${i}" placeholder="Ex: L001" value="${escHtml(item.lote)}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Data Entrada</label>
+                    <input class="form-input" id="xmlEntrada_${i}" placeholder="DD/MM/AAAA" value="${escHtml(item.entrada)}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Data Validade <span class="req">*</span></label>
+                    <input class="form-input" id="xmlValidade_${i}" placeholder="DD/MM/AAAA" value="${escHtml(item.validade)}">
+                </div>
+            </div>
+        </div>`;
+            });
+
+            html += `<div class="form-group" style="margin-top:8px">
+        <label class="form-label">Senha de confirmação <span class="req">*</span></label>
+        <input class="form-input" id="xmlImportPassword" type="password" placeholder="Digite a senha para confirmar" autocomplete="off">
+    </div>`;
+
+            document.getElementById('xmlImportBody').innerHTML = html;
+            openModal('xmlImportModal');
+        }
+
+        function toggleXmlItemInclude(idx) {
+            if (!pendingXmlImport) return;
+            pendingXmlImport.items[idx].include = document.getElementById('xmlInclude_' + idx)?.checked ?? false;
+            const card = document.getElementById('xmlItem_' + idx);
+            if (card) card.classList.toggle('excluded', !pendingXmlImport.items[idx].include);
+        }
+
+        function removeXmlItem(idx) {
+            if (!pendingXmlImport) return;
+            pendingXmlImport.items[idx].include = false;
+            const card = document.getElementById('xmlItem_' + idx);
+            if (card) {
+                card.classList.add('excluded');
+                card.style.display = 'none';
+            }
+            const cb = document.getElementById('xmlInclude_' + idx);
+            if (cb) cb.checked = false;
+        }
+
+        function _collectXmlItemsFromForm() {
+            return pendingXmlImport.items.map((item, i) => {
+                const card = document.getElementById('xmlItem_' + i);
+                if (card && card.style.display === 'none') return { ...item, include: false };
+                return {
+                    ...item,
+                    include: document.getElementById('xmlInclude_' + i)?.checked ?? false,
+                    lote: document.getElementById('xmlLote_' + i)?.value.trim() || '',
+                    entrada: document.getElementById('xmlEntrada_' + i)?.value.trim() || '',
+                    validade: document.getElementById('xmlValidade_' + i)?.value.trim() || ''
+                };
+            }).filter(it => it.include);
+        }
+
+        function confirmXmlImportApply() {
+            const pwd = document.getElementById('xmlImportPassword')?.value;
+            if (pwd !== IMPORT_PASSWORD) {
+                toast('Senha incorreta. Nenhuma alteração foi feita.', 'error');
+                return;
+            }
+            if (!pendingXmlImport) return;
+
+            const toImport = _collectXmlItemsFromForm();
+            if (!toImport.length) return toast('Nenhum item selecionado para importar.', 'info');
+
+            for (const item of toImport) {
+                if (!item.lote) return toast(`Informe o lote do item: ${item.referencia}`, 'error');
+                if (!item.validade) return toast(`Informe a validade do item: ${item.referencia}`, 'error');
+                const valIso = parseDate(item.validade);
+                if (!valIso) return toast(`Data de validade inválida: ${item.referencia}`, 'error');
+            }
+
+            const nNF = pendingXmlImport.nNF || '';
+            let count = 0;
+
+            toImport.forEach(item => {
+                const valIso = parseDate(item.validade);
+                const entIso = parseDate(item.entrada) || isoToday();
+                let prod = item.pid ? db.products.find(p => p.id === item.pid) : findProductForImport(item.cod, item.ean, item.referencia);
+
+                if (!prod) {
+                    const pid = uid();
+                    prod = { id: pid, cod: item.cod, ean: item.ean, referencia: item.referencia };
+                    db.products.push(prod);
+                    db.lots.push({
+                        id: uid(), productId: pid, lote: item.lote,
+                        quantidade: item.qty,
+                        dataEntrada: entIso,
+                        dataValidade: valIso
+                    });
+                    addHistory('importacao_nfe', pid, item.lote, item.qty, `Importação NFe ${nNF} — Cadastro novo`);
+                    count++;
+                    return;
+                }
+
+                const existing = db.lots.find(l => l.productId === prod.id && l.lote === item.lote);
+                if (existing) {
+                    existing.quantidade += item.qty;
+                    if (entIso) existing.dataEntrada = entIso;
+                    existing.dataValidade = valIso;
+                    addHistory('importacao_nfe', prod.id, item.lote, item.qty, `Importação NFe ${nNF} — Entrada (+${item.qty})`);
+                } else {
+                    db.lots.push({
+                        id: uid(), productId: prod.id, lote: item.lote,
+                        quantidade: item.qty,
+                        dataEntrada: entIso,
+                        dataValidade: valIso
+                    });
+                    addHistory('importacao_nfe', prod.id, item.lote, item.qty, `Importação NFe ${nNF} — Novo lote`);
+                }
+                count++;
+            });
+
+            pendingXmlImport = null;
+            saveDB();
+            renderTable();
+            renderHistory();
+            closeXmlImportModal();
+            toast(`${count} item(ns) importado(s) da NFe com sucesso!`, 'success');
+        }
+
+        function closeXmlImportModal() {
+            closeModal('xmlImportModal');
+            pendingXmlImport = null;
         }
 
         function exportHistoryCSV() {
@@ -3311,7 +3849,7 @@
             if (!db.history.length) return toast('Nenhum histórico para exportar.', 'info');
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.aoa_to_sheet(_buildHistoricoRows());
-            ws['!cols'] = [14, 12, 8, 10, 8, 18, 30, 10, 12, 40, 14, 22].map(w => ({ wch: w }));
+            ws['!cols'] = [14, 12, 8, 10, 8, 18, 30, 10, 12, 40, 14, 22, 16].map(w => ({ wch: w }));
             XLSX.utils.book_append_sheet(wb, ws, 'Historico');
             XLSX.writeFile(wb, 'historico_export.xlsx');
             toast('Histórico exportado em Excel!', 'success');

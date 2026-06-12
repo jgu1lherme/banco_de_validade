@@ -1698,7 +1698,8 @@
                         </div>
                         <p style="font-size:.75rem;color:var(--text3);margin-top:12px;line-height:1.6">
                             <strong style="color:var(--amber)">Importação por NF-e</strong> — extrai EAN, nome e
-                            quantidade do XML. Você revisa item a item, digita um <em>código</em>,
+                            quantidade do XML. Você revisa item a item, pode digitar um <em>código interno</em>
+                            opcional,
                             preenche <em>lote</em> e <em>data de validade</em> (obrigatórios) e confirma com
                             senha.<br><br>
                             Produtos não encontrados na base podem ser cadastrados na revisão.
@@ -2076,9 +2077,9 @@
         // ============================================================
 
         const CLOUD_CONFIG = {
-            apiUrl: 'https://script.google.com/macros/s/AKfycbyFI6SHdnfqpotN4BGSZewY-0Zo6dQ-4E4aOdolZjSpzbgAfUDXhFlSNJPOY0l7f9e7Zg/exec',
+            apiUrl: 'https://script.google.com/macros/s/AKfycbz-Xm2ioBHhIjFI01Fuq8VVYdTRttOdjCP06uXNyCGvJFan5LNcGQoloDItag0AV9_6/exec',
             // Client ID OAuth (público — pode ficar no código). Crie em console.cloud.google.com
-            googleClientId: '771002640166-7t218jfd3av1akcakiqr0lle3mo86u58.apps.googleusercontent.com'
+            googleClientId: '459142362417-9n4oi3gcsiibsnj9ab8n1h2sjdlftv8g.apps.googleusercontent.com'
         };
 
         let _loadedFromCloud = false;
@@ -3187,10 +3188,19 @@
                 () => {
                     lot.quantidade -= qty;
                     addHistory('saida', pid, lot.lote, qty, `Baixa no lote ${lot.lote}`);
-                    saveDB();
-                    renderTable();
-                    closeMoveModal();
-                    toast(`Baixa de ${qty} unidades registrada.`, 'success');
+                    if (lot.quantidade <= 0) {
+                        db.lots = db.lots.filter(l => l.id !== lot.id);
+                        addHistory('lote_removido', pid, lot.lote, 0, `Lote ${lot.lote} removido automaticamente — estoque zerado`);
+                        saveDB();
+                        renderTable();
+                        closeMoveModal();
+                        toast(`Baixa de ${qty} unidades registrada. Lote ${lot.lote} removido (estoque zerado).`, 'success');
+                    } else {
+                        saveDB();
+                        renderTable();
+                        closeMoveModal();
+                        toast(`Baixa de ${qty} unidades registrada.`, 'success');
+                    }
                 },
                 true
             );
@@ -3351,7 +3361,7 @@
             if (historyCurrentPage > pages) historyCurrentPage = pages;
 
             const slice = db.history.slice((historyCurrentPage - 1) * HISTORY_PAGE_SIZE, historyCurrentPage * HISTORY_PAGE_SIZE);
-            const icons = { cadastro: '🆕', entrada: '📥', saida: '📤', importacao: '📋', importacao_nfe: '🧾' };
+            const icons = { cadastro: '🆕', entrada: '📥', saida: '📤', importacao: '📋', importacao_nfe: '🧾', lote_removido: '🗑️' };
 
             div.innerHTML = slice.map(h => {
                 const prod = db.products.find(p => p.id === h.pid);
@@ -3359,16 +3369,17 @@
                 const d = new Date(h.date);
                 const label = {
                     cadastro: 'Cadastro', entrada: 'Entrada', saida: 'Baixa',
-                    importacao: 'Importação Planilha', importacao_nfe: 'Importação NFe'
+                    importacao: 'Importação Planilha', importacao_nfe: 'Importação NFe',
+                    lote_removido: 'Lote Removido'
                 }[h.type] || h.type;
-                const col = { cadastro: 'cadastro', entrada: 'entrada', saida: 'saida', importacao: 'importacao', importacao_nfe: 'importacao' }[h.type] || 'entrada';
+                const col = { cadastro: 'cadastro', entrada: 'entrada', saida: 'saida', importacao: 'importacao', importacao_nfe: 'importacao', lote_removido: 'saida' }[h.type] || 'entrada';
                 const operadorHtml = h.operador
                     ? `<div class="history-operator">👤 ${escHtml(h.operador)}</div>` : '';
                 return `<div class="history-item">
       <div class="history-icon ${col}">${icons[h.type] || '•'}</div>
       <div class="history-info">
         <div class="history-title">${label} — ${escHtml(prodNome)} (Lote ${escHtml(h.lote || '—')})</div>
-        <div class="history-detail">${escHtml(h.note)} — ${h.qty} unidades</div>
+        <div class="history-detail">${escHtml(h.note)}${h.type !== 'lote_removido' ? ` — ${h.qty} unidades` : ''}</div>
         ${operadorHtml}
       </div>
       <div class="history-time">${d.toLocaleDateString('pt-BR')} ${formatTime(d)}</div>

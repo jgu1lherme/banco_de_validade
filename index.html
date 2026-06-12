@@ -1697,9 +1697,10 @@
                                 onchange="importXmlFile(event)">
                         </div>
                         <p style="font-size:.75rem;color:var(--text3);margin-top:12px;line-height:1.6">
-                            <strong style="color:var(--amber)">Importação por NF-e</strong> — extrai código, EAN, nome e
-                            quantidade do XML. Você revisa item a item, preenche <em>lote</em> e <em>data de
-                                validade</em> (obrigatórios) e confirma com senha.<br><br>
+                            <strong style="color:var(--amber)">Importação por NF-e</strong> — extrai EAN, nome e
+                            quantidade do XML. Você revisa item a item, digita um <em>código</em>,
+                            preenche <em>lote</em> e <em>data de validade</em> (obrigatórios) e confirma com
+                            senha.<br><br>
                             Produtos não encontrados na base podem ser cadastrados na revisão.
                         </p>
                     </div>
@@ -3830,14 +3831,13 @@
                         if (_xmlLocalName(inner[k]) === 'prod') { prod = inner[k]; break; }
                     }
                 }
-                const cod = _xmlText(prod, 'cprod');
                 const ean = _xmlText(prod, 'cean').replace(/^SEM GTIN$/i, '');
-                const ref = _xmlText(prod, 'xprod') || cod;
+                const ref = _xmlText(prod, 'xprod') || '';
                 const qty = Number(_xmlText(prod, 'qcom')) || Number(_xmlText(prod, 'qtrib')) || 0;
-                const matched = findProductForImport(cod, ean, ref);
+                const matched = findProductForImport('', ean, ref);
                 return {
                     idx,
-                    cod, ean, referencia: ref, qty,
+                    cod: '', ean, referencia: ref, qty,
                     lote: '',
                     entrada: _parseNFeDate(dhEmi),
                     validade: '',
@@ -3889,7 +3889,7 @@
                 <div>
                     <div class="xml-item-title">${escHtml(item.referencia)}</div>
                     <div class="xml-item-meta">
-                        Cod: ${escHtml(item.cod) || '—'} · EAN: ${escHtml(item.ean) || '—'} · Qtd: <strong>${item.qty}</strong>
+                        EAN: ${escHtml(item.ean) || '—'} · Qtd: <strong>${item.qty}</strong>
                     </div>
                     <div style="margin-top:6px">${matchLabel}</div>
                 </div>
@@ -3901,6 +3901,10 @@
                 </div>
             </div>
             <div class="xml-item-fields">
+                <div class="form-group">
+                    <label class="form-label">Código interno <span style="color:var(--text3);font-weight:400">(opcional)</span></label>
+                    <input class="form-input" id="xmlCod_${i}" placeholder="Ex: 001" value="${escHtml(item.cod)}">
+                </div>
                 <div class="form-group">
                     <label class="form-label">Lote <span class="req">*</span></label>
                     <input class="form-input" id="xmlLote_${i}" placeholder="Ex: L001" value="${escHtml(item.lote)}">
@@ -3952,6 +3956,7 @@
                 return {
                     ...item,
                     include: document.getElementById('xmlInclude_' + i)?.checked ?? false,
+                    cod: document.getElementById('xmlCod_' + i)?.value.trim() || '',
                     lote: document.getElementById('xmlLote_' + i)?.value.trim() || '',
                     entrada: document.getElementById('xmlEntrada_' + i)?.value.trim() || '',
                     validade: document.getElementById('xmlValidade_' + i)?.value.trim() || ''

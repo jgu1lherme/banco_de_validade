@@ -788,9 +788,10 @@
         /* ===== MOVE TYPE SELECTOR ===== */
         .move-options {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(2, minmax(0, 200px));
             gap: 12px;
             margin-bottom: 4px;
+            justify-content: center;
         }
 
         .move-option {
@@ -1587,7 +1588,8 @@
                             <rect x="2" y="7" width="20" height="14" rx="2" />
                             <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
                         </svg>
-                        <p>Nenhum produto encontrado.<br>Use "Movimentação → Cadastro" para adicionar.</p>
+                        <p>Nenhum produto com movimentação registrada.<br>Use "Movimentação → Entrada" para dar entrada
+                            em um produto pelo EAN.</p>
                     </div>
                     <div class="pagination" id="pagination">
                         <span id="paginationInfo">—</span>
@@ -1681,7 +1683,7 @@
                             novo nem substitui tudo). Antes de aplicar, um resumo será exibido e será necessária
                             confirmação com senha.<br><br>
                             Colunas esperadas: <code
-                                style="color:var(--cyan)">cod, ean, referencia, lote, quantidade, data_entrada, data_validade</code>
+                                style="color:var(--cyan)">cod, ean, desc, lote, quantidade, data_entrada, data_validade</code>
                         </p>
                         <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:10px"
                             onclick="downloadTemplateXLSX()">
@@ -1741,6 +1743,8 @@
                     <p style="font-size:.875rem;color:var(--text2);margin-bottom:12px;line-height:1.7">
                         📂 <strong style="color:var(--cyan)">Estoque:</strong> lido e salvo na planilha Google Sheets
                         (aba <em>Estoque</em>).<br>
+                        📦 <strong style="color:var(--cyan)">Catálogo:</strong> produtos cadastrados na aba
+                        <em>Produtos GwNet</em> (somente leitura — busca por EAN na movimentação).<br>
                         📜 <strong style="color:var(--cyan)">Histórico:</strong> na mesma planilha (aba
                         <em>Historico</em>), com registro de <strong>quem fez</strong> cada ação.<br>
                         👤 <strong style="color:var(--cyan)">Operadores:</strong> cadastrados na aba
@@ -1783,11 +1787,6 @@
                     <p style="color:var(--text2);font-size:.875rem;margin-bottom:16px">Selecione o tipo de movimentação:
                     </p>
                     <div class="move-options">
-                        <div class="move-option green-opt" onclick="selectMoveType('cadastro')">
-                            <span class="move-icon">🆕</span>
-                            <div class="move-label">Cadastro</div>
-                            <div class="move-desc">Novo produto + novo lote</div>
-                        </div>
                         <div class="move-option green-opt" onclick="selectMoveType('entrada')">
                             <span class="move-icon">📥</span>
                             <div class="move-label">Entrada</div>
@@ -1839,7 +1838,7 @@
             <div class="modal-body">
                 <div class="form-grid">
                     <div class="form-group form-col-full">
-                        <label class="form-label">Referência (Nome) <span class="req">*</span></label>
+                        <label class="form-label">Descrição (Nome) <span class="req">*</span></label>
                         <input class="form-input" id="ep_ref" placeholder="Ex: Analgésico 500mg">
                     </div>
                     <div class="form-group">
@@ -2030,7 +2029,7 @@
         // ============================================================
         //  DATA MODEL
         // ============================================================
-        // products[]: { id, cod, ean, referencia }
+        // products[]: { id, cod, ean, desc }
         // lots[]:     { id, productId, lote, quantidade, dataEntrada, dataValidade }
         // history[]:  { id, type, productId, lote, quantidade, date, note }
 
@@ -2038,7 +2037,8 @@
             products: [],
             lots: [],
             history: [],
-            operadores: []
+            operadores: [],
+            gwnetProducts: []
         };
 
         let currentMoveType = null;
@@ -2077,7 +2077,7 @@
         // ============================================================
 
         const CLOUD_CONFIG = {
-            apiUrl: 'https://script.google.com/macros/s/AKfycbz-Xm2ioBHhIjFI01Fuq8VVYdTRttOdjCP06uXNyCGvJFan5LNcGQoloDItag0AV9_6/exec',
+            apiUrl: 'https://script.google.com/macros/s/AKfycbxq4k8crxqNIEghAZrAuJm0iungK-CW_Jd2AWZc-SekGeY3vIfN37q189qBb3hjLsZC/exec',
             // Client ID OAuth (público — pode ficar no código). Crie em console.cloud.google.com
             googleClientId: '459142362417-9n4oi3gcsiibsnj9ab8n1h2sjdlftv8g.apps.googleusercontent.com'
         };
@@ -2338,6 +2338,7 @@
             if (!db.lots) db.lots = [];
             if (!db.history) db.history = [];
             if (!db.operadores) db.operadores = [];
+            if (!db.gwnetProducts) db.gwnetProducts = [];
             if (!_googleIdToken) return;
 
             try {
@@ -2346,11 +2347,20 @@
                 const estoqueRows = result.data?.estoque || [];
                 const historicoRows = result.data?.historico || [];
                 const operadoresRows = result.data?.operadores || [];
+                const gwnetRows = result.data?.produtos_gwnet
+                    || result.data?.produtosgwnet
+                    || result.data?.['produtos gwnet']
+                    || result.data?.gwnet
+                    || [];
 
                 if (operadoresRows.length > 1) {
                     _processOperadoresRows(operadoresRows);
                 } else {
                     _processOperadoresRows([]);
+                }
+
+                if (gwnetRows.length > 1) {
+                    _processGwnetProducts(_arrayRowsToObjects(gwnetRows));
                 }
 
                 if (estoqueRows.length > 1) {
@@ -2371,6 +2381,20 @@
             }
         }
 
+        function _processGwnetProducts(rows) {
+            db.gwnetProducts = [];
+            rows.forEach(row => {
+                const norm = {};
+                Object.keys(row).forEach(k => { norm[k.toLowerCase().trim()] = row[k]; });
+                // Campos da aba Produtos GwNet: EAN, cd_ref, ds_completa
+                const cod = String(norm['cd_ref'] || norm['cod'] || '').trim();
+                const ean = String(norm['ean'] || '').trim();
+                const desc = String(norm['ds_completa'] || norm['desc'] || norm['descricao'] || norm['referencia'] || norm['nome'] || '').trim();
+                if (!ean && !cod) return;
+                db.gwnetProducts.push({ cod, ean, desc });
+            });
+        }
+
         function processHistoricoRowsSilent(rows) {
             const loaded = [];
             rows.forEach(row => {
@@ -2382,14 +2406,14 @@
                 let pid = String(norm['product_id'] || norm['productid'] || '').trim();
                 const cod = String(norm['cod'] || '').trim();
                 const ean = String(norm['ean'] || '').trim();
-                const ref = String(norm['referencia'] || '').trim();
+                const ref = String(norm['desc'] || norm['referencia'] || '').trim();
                 // O pid salvo pode estar desatualizado (produtos recriados com novo uid() a cada load).
                 // Verifica se o pid bate com algum produto carregado; senao resolve por cod/ean/ref.
                 const pidMatchesCurrent = pid && db.products.some(p => p.id === pid);
                 if (!pidMatchesCurrent) {
                     const prod = db.products.find(p =>
                         (cod && p.cod === cod) || (ean && p.ean === ean) ||
-                        (ref && p.referencia.toLowerCase() === ref.toLowerCase())
+                        (ref && p.desc.toLowerCase() === ref.toLowerCase())
                     );
                     if (prod) pid = prod.id;
                 }
@@ -2423,7 +2447,7 @@
                     id: String(norm['id'] || '').trim() || uid(),
                     type: tipo,
                     pid: pid || '',
-                    referencia: ref || '',
+                    desc: ref || '',
                     lote,
                     qty: isNaN(qty) ? 0 : qty,
                     note,
@@ -2470,12 +2494,12 @@
         }
 
         function _buildEstoqueRows() {
-            const rows = [['cod', 'ean', 'referencia', 'lote', 'quantidade', 'data_entrada', 'data_validade']];
+            const rows = [['cod', 'ean', 'desc', 'lote', 'quantidade', 'data_entrada', 'data_validade']];
             db.lots.forEach(l => {
                 const p = db.products.find(x => x.id === l.productId);
                 if (!p) return;
                 rows.push([
-                    p.cod || '', p.ean || '', p.referencia || '',
+                    p.cod || '', p.ean || '', p.desc || '',
                     l.lote || '', l.quantidade,
                     formatDate(l.dataEntrada), formatDate(l.dataValidade)
                 ]);
@@ -2485,7 +2509,7 @@
 
         function _buildHistoricoRows() {
             const rows = [[
-                'id', 'data', 'hora', 'tipo', 'cod', 'ean', 'referencia',
+                'id', 'data', 'hora', 'tipo', 'cod', 'ean', 'desc',
                 'lote', 'quantidade', 'observacao', 'product_id', 'date_iso', 'operador'
             ]];
             db.history.forEach(h => {
@@ -2496,7 +2520,7 @@
                     d.toLocaleDateString('pt-BR'),
                     formatTime(d),
                     h.type,
-                    prod?.cod || '', prod?.ean || '', prod?.referencia || '',
+                    prod?.cod || '', prod?.ean || '', prod?.desc || '',
                     h.lote || '', h.qty,
                     h.note || '', h.pid || '', h.date,
                     h.operador || ''
@@ -2541,7 +2565,7 @@
                 Object.keys(row).forEach(k => { norm[k.toLowerCase().trim()] = row[k]; });
                 const cod = String(norm['cod'] || '').trim();
                 const ean = String(norm['ean'] || '').trim();
-                const ref = String(norm['referencia'] || '').trim();
+                const ref = String(norm['desc'] || norm['referencia'] || '').trim();
                 const lote = String(norm['lote'] || '').trim();
                 const qty = Number(norm['quantidade']) || 0;
                 let entRaw = norm['data_entrada'] || norm['dataentrada'] || '';
@@ -2556,10 +2580,10 @@
                 if (!ref && !cod) return;
                 let prod = db.products.find(p =>
                     (cod && p.cod === cod) || (ean && p.ean === ean) ||
-                    (ref && p.referencia.toLowerCase() === ref.toLowerCase())
+                    (ref && p.desc.toLowerCase() === ref.toLowerCase())
                 );
                 if (!prod) {
-                    prod = { id: uid(), cod, ean, referencia: ref || cod };
+                    prod = { id: uid(), cod, ean, desc: ref || cod };
                     db.products.push(prod);
                 }
                 if (lote) {
@@ -2688,7 +2712,7 @@
             return db.products.filter(p =>
                 (p.cod || '').toLowerCase().includes(s) ||
                 (p.ean || '').toLowerCase().includes(s) ||
-                (p.referencia || '').toLowerCase().includes(s)
+                (p.desc || '').toLowerCase().includes(s)
             );
         }
 
@@ -2700,7 +2724,9 @@
             const statusFil = document.getElementById('filterStatus').value;
 
             filteredProducts = db.products.filter(p => {
-                if (search && !(`${p.cod}${p.ean}${p.referencia}`).toLowerCase().includes(search)) return false;
+                // Só exibe produtos que têm pelo menos um lote registrado
+                if (!db.lots.some(l => l.productId === p.id)) return false;
+                if (search && !(`${p.cod}${p.ean}${p.desc}`).toLowerCase().includes(search)) return false;
                 if (statusFil) {
                     const nearest = getNearestLot(p.id);
                     const days = nearest ? daysUntil(nearest.dataValidade) : 9999;
@@ -2731,7 +2757,7 @@
                     const lotesCnt = getLotsForProduct(p.id).length;
                     return `<tr onclick="openDetailModal('${p.id}')">
         <td>
-          <div class="product-name">${escHtml(p.referencia)}</div>
+          <div class="product-name">${escHtml(p.desc)}</div>
         </td>
         <td>
           <div class="product-code">Cod: ${escHtml(p.cod) || '—'}</div>
@@ -2854,7 +2880,7 @@
     <div class="form-section">
       <div class="form-grid">
         <div class="form-group form-col-full">
-          <label class="form-label">Referência (Nome) <span class="req">*</span></label>
+          <label class="form-label">Descrição (Nome) <span class="req">*</span></label>
           <input class="form-input" id="f_ref" placeholder="Ex: Analgésico 500mg" required>
         </div>
         <div class="form-group">
@@ -2893,30 +2919,33 @@
                 step2.innerHTML = `
     <div class="form-section">
       <div class="form-group" style="margin-bottom:14px">
-        <label class="form-label">Produto <span class="req">*</span></label>
-        <div class="autocomplete-wrap">
-          <input class="form-input" id="f_prod_search" placeholder="Nome, Código ou EAN do produto…"
-            oninput="acSearch('f_prod_search','f_prod_id','acListEntrada')" autocomplete="off">
-          <div class="autocomplete-list" id="acListEntrada"></div>
-          <input type="hidden" id="f_prod_id">
+        <label class="form-label">EAN do Produto <span class="req">*</span></label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input class="form-input" id="f_ean_search_e" placeholder="Digite ou escaneie o EAN…" autocomplete="off"
+            oninput="resetEanFields('entrada')"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();eanSearch('f_ean_search_e','f_prod_id','f_prod_info_e');}"
+            style="flex:1">
+          <button class="btn btn-ghost" type="button" onclick="eanSearch('f_ean_search_e','f_prod_id','f_prod_info_e')" style="white-space:nowrap">🔍 Buscar</button>
         </div>
+        <input type="hidden" id="f_prod_id">
+        <div id="f_prod_info_e" style="margin-top:8px"></div>
       </div>
-      <div class="form-grid">
+      <div class="form-grid" id="entrada_fields" style="opacity:.4;pointer-events:none">
         <div class="form-group">
           <label class="form-label">Lote <span class="req">*</span></label>
-          <input class="form-input" id="f_lote_e" placeholder="Ex: L002" oninput="checkLoteExistente()">
+          <input class="form-input" id="f_lote_e" placeholder="Ex: L002" oninput="checkLoteExistente()" disabled>
         </div>
         <div class="form-group">
           <label class="form-label">Quantidade <span class="req">*</span></label>
-          <input class="form-input" id="f_qty_e" type="number" min="1" placeholder="Ex: 50">
+          <input class="form-input" id="f_qty_e" type="number" min="1" placeholder="Ex: 50" disabled>
         </div>
         <div class="form-group">
           <label class="form-label">Data de Entrada</label>
-          <input class="form-input" id="f_entrada_e" placeholder="${today}" value="${today}">
+          <input class="form-input" id="f_entrada_e" placeholder="${today}" value="${today}" disabled>
         </div>
         <div class="form-group">
           <label class="form-label">Data de Validade</label>
-          <input class="form-input" id="f_validade_e" placeholder="DD/MM/AAAA">
+          <input class="form-input" id="f_validade_e" placeholder="DD/MM/AAAA" disabled>
         </div>
       </div>
       <div id="loteExistenteInfo" style="margin:0 0 8px"></div>
@@ -2931,25 +2960,30 @@
                 step2.innerHTML = `
     <div class="form-section">
       <div class="form-group" style="margin-bottom:14px">
-        <label class="form-label">Produto <span class="req">*</span></label>
-        <div class="autocomplete-wrap">
-          <input class="form-input" id="f_prod_search_b" placeholder="Nome, Código ou EAN do produto…"
-            oninput="acSearch('f_prod_search_b','f_prod_id_b','acListBaixa','true')" autocomplete="off">
-          <div class="autocomplete-list" id="acListBaixa"></div>
-          <input type="hidden" id="f_prod_id_b">
+        <label class="form-label">EAN do Produto <span class="req">*</span></label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input class="form-input" id="f_ean_search_b" placeholder="Digite ou escaneie o EAN…" autocomplete="off"
+            oninput="resetEanFields('baixa')"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();eanSearch('f_ean_search_b','f_prod_id_b','f_prod_info_b',true);}"
+            style="flex:1">
+          <button class="btn btn-ghost" type="button" onclick="eanSearch('f_ean_search_b','f_prod_id_b','f_prod_info_b',true)" style="white-space:nowrap">🔍 Buscar</button>
         </div>
+        <input type="hidden" id="f_prod_id_b">
+        <div id="f_prod_info_b" style="margin-top:8px"></div>
       </div>
-      <div class="form-group" style="margin-bottom:14px">
-        <label class="form-label">Lote <span class="req">*</span></label>
-        <select class="form-select" id="f_lote_b">
-          <option value="">— Selecione um produto primeiro —</option>
-        </select>
+      <div id="baixa_fields" style="opacity:.4;pointer-events:none">
+        <div class="form-group" style="margin-bottom:14px">
+          <label class="form-label">Lote <span class="req">*</span></label>
+          <select class="form-select" id="f_lote_b" disabled>
+            <option value="">— Busque o produto pelo EAN primeiro —</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:14px">
+          <label class="form-label">Quantidade para Baixa <span class="req">*</span></label>
+          <input class="form-input" id="f_qty_b" type="number" min="1" placeholder="Ex: 10" disabled>
+        </div>
+        <div id="baixaLotInfo" style="margin-bottom:14px"></div>
       </div>
-      <div class="form-group" style="margin-bottom:14px">
-        <label class="form-label">Quantidade para Baixa <span class="req">*</span></label>
-        <input class="form-input" id="f_qty_b" type="number" min="1" placeholder="Ex: 10">
-      </div>
-      <div id="baixaLotInfo" style="margin-bottom:14px"></div>
       <div class="form-footer">
         <button class="btn btn-ghost" onclick="backToMoveStep1()">← Voltar</button>
         <button class="btn btn-danger" onclick="submitBaixa()">✓ Confirmar Baixa</button>
@@ -2959,7 +2993,118 @@
         }
 
         // ============================================================
-        //  AUTOCOMPLETE
+        //  EAN SEARCH (busca obrigatória por EAN em Entrada e Baixa)
+        // ============================================================
+
+        function resetEanFields(type) {
+            if (type === 'entrada') {
+                const el = document.getElementById('f_prod_id');
+                if (el) el.value = '';
+                const info = document.getElementById('f_prod_info_e');
+                if (info) info.innerHTML = '';
+                const fields = document.getElementById('entrada_fields');
+                if (fields) {
+                    fields.style.opacity = '.4';
+                    fields.style.pointerEvents = 'none';
+                    fields.querySelectorAll('input').forEach(i => {
+                        i.disabled = true;
+                        if (i.id !== 'f_entrada_e') i.value = '';
+                    });
+                }
+                const loteInfo = document.getElementById('loteExistenteInfo');
+                if (loteInfo) loteInfo.innerHTML = '';
+            } else {
+                const el = document.getElementById('f_prod_id_b');
+                if (el) el.value = '';
+                const info = document.getElementById('f_prod_info_b');
+                if (info) info.innerHTML = '';
+                const fields = document.getElementById('baixa_fields');
+                if (fields) {
+                    fields.style.opacity = '.4';
+                    fields.style.pointerEvents = 'none';
+                    const sel = fields.querySelector('select');
+                    if (sel) { sel.disabled = true; sel.innerHTML = '<option value="">— Busque o produto pelo EAN primeiro —</option>'; }
+                    const qty = fields.querySelector('input');
+                    if (qty) { qty.disabled = true; qty.value = ''; }
+                }
+                const lotInfo = document.getElementById('baixaLotInfo');
+                if (lotInfo) lotInfo.innerHTML = '';
+            }
+        }
+
+        function unlockEanFields(type) {
+            if (type === 'entrada') {
+                const fields = document.getElementById('entrada_fields');
+                if (fields) {
+                    fields.style.opacity = '1';
+                    fields.style.pointerEvents = 'auto';
+                    fields.querySelectorAll('input').forEach(i => i.disabled = false);
+                    const lote = document.getElementById('f_lote_e');
+                    if (lote) lote.focus();
+                }
+            } else {
+                const fields = document.getElementById('baixa_fields');
+                if (fields) {
+                    fields.style.opacity = '1';
+                    fields.style.pointerEvents = 'auto';
+                    const sel = fields.querySelector('select');
+                    if (sel) sel.disabled = false;
+                    const qty = fields.querySelector('input');
+                    if (qty) qty.disabled = false;
+                }
+            }
+        }
+
+        function eanSearch(inputId, hiddenId, infoId, forBaixa) {
+            const ean = document.getElementById(inputId).value.trim();
+            const infoDiv = document.getElementById(infoId);
+            document.getElementById(hiddenId).value = '';
+            if (infoDiv) infoDiv.innerHTML = '';
+
+            if (!ean) { toast('Informe o EAN do produto.', 'error'); return; }
+
+            // 1) Tenta achar no estoque local (já teve movimentação)
+            let prod = db.products.find(p => (p.ean || '').trim() === ean);
+
+            if (!prod) {
+                // 2) Busca no catálogo GwNet (ds_completa / cd_ref / EAN)
+                const gwProd = (db.gwnetProducts || []).find(p => (p.ean || '').trim() === ean);
+
+                if (!gwProd) {
+                    if (infoDiv) infoDiv.innerHTML = `<div style="background:var(--red-muted);border:1px solid var(--red);border-radius:8px;padding:10px 14px;font-size:.84rem;color:var(--text)">
+  <span style="font-size:1rem">❌</span> EAN <strong>${escHtml(ean)}</strong> não encontrado. Verifique se o produto está cadastrado na aba <em>Produtos GwNet</em>.
+</div>`;
+                    return;
+                }
+
+                if (forBaixa) {
+                    // Na baixa, produto sem estoque = sem lotes para dar saída
+                    if (infoDiv) infoDiv.innerHTML = `<div style="background:var(--amber-muted);border:1px solid var(--amber);border-radius:8px;padding:10px 14px;font-size:.84rem;color:var(--text)">
+  <span style="font-size:1rem">⚠️</span> <strong>${escHtml(gwProd.desc)}</strong> — EAN: ${escHtml(ean)}<br>
+  <span style="color:var(--amber)">Este produto ainda não possui estoque registrado. Faça uma Entrada antes de realizar a Baixa.</span>
+</div>`;
+                    return;
+                }
+
+                // Na entrada: cria o produto no banco local com dados do GwNet
+                prod = { id: uid(), cod: gwProd.cod, ean: gwProd.ean, desc: gwProd.desc };
+                db.products.push(prod);
+            }
+
+            document.getElementById(hiddenId).value = prod.id;
+            if (infoDiv) infoDiv.innerHTML = `<div style="background:var(--cyan-muted);border:1px solid var(--cyan);border-radius:8px;padding:10px 14px;font-size:.84rem;color:var(--text)">
+  <span style="font-size:1rem">✅</span> <strong>${escHtml(prod.desc)}</strong>${prod.cod ? ' — Cod: ' + escHtml(prod.cod) : ''} — EAN: ${escHtml(prod.ean)}
+</div>`;
+
+            // Habilita os campos após busca bem-sucedida
+            unlockEanFields(forBaixa ? 'baixa' : 'entrada');
+
+            if (forBaixa) loadLotsForBaixa(prod.id);
+            else if (document.getElementById('f_lote_e')) checkLoteExistente();
+        }
+
+        // ============================================================
+        //  AUTOCOMPLETE (mantido para compatibilidade com XML import etc.)
         // ============================================================
         function acSearch(inputId, hiddenId, listId, forBaixa) {
             const q = document.getElementById(inputId).value;
@@ -2971,8 +3116,8 @@
 
             if (!results.length) { list.classList.remove('open'); return; }
             list.innerHTML = results.map(p => `
-    <div class="ac-item" onclick="acSelect('${p.id}','${escHtml(p.referencia)}','${inputId}','${hiddenId}','${listId}',${!!forBaixa})">
-      <span>${escHtml(p.referencia)}</span>
+    <div class="ac-item" onclick="acSelect('${p.id}','${escHtml(p.desc)}','${inputId}','${hiddenId}','${listId}',${!!forBaixa})">
+      <span>${escHtml(p.desc)}</span>
       <span class="ac-item-code">${p.cod || p.ean || ''}</span>
     </div>`).join('');
             list.classList.add('open');
@@ -3030,7 +3175,7 @@
             const ent = document.getElementById('f_entrada').value.trim();
             const val = document.getElementById('f_validade').value.trim();
 
-            if (!ref) return toast('Informe a Referência (nome) do produto.', 'error');
+            if (!ref) return toast('Informe a Descrição (nome) do produto.', 'error');
             if (!lote) return toast('Informe o número do Lote.', 'error');
 
             // Verificar duplicidade
@@ -3039,23 +3184,23 @@
             const eanNorm = ean.toLowerCase();
             const loteNorm = lote.toLowerCase();
 
-            const prodDupRef = db.products.find(p => p.referencia.toLowerCase() === refNorm);
-            if (prodDupRef) return toast(`Já existe um produto com a referência "${ref}".`, 'error');
+            const prodDupRef = db.products.find(p => p.desc.toLowerCase() === refNorm);
+            if (prodDupRef) return toast(`Já existe um produto com a descrição "${ref}".`, 'error');
 
             if (cod) {
                 const prodDupCod = db.products.find(p => p.cod && p.cod.toLowerCase() === codNorm);
-                if (prodDupCod) return toast(`Já existe um produto com o código "${cod}" (${prodDupCod.referencia}).`, 'error');
+                if (prodDupCod) return toast(`Já existe um produto com o código "${cod}" (${prodDupCod.desc}).`, 'error');
             }
 
             if (ean) {
                 const prodDupEan = db.products.find(p => p.ean && p.ean.toLowerCase() === eanNorm);
-                if (prodDupEan) return toast(`Já existe um produto com o EAN "${ean}" (${prodDupEan.referencia}).`, 'error');
+                if (prodDupEan) return toast(`Já existe um produto com o EAN "${ean}" (${prodDupEan.desc}).`, 'error');
             }
 
             const loteDup = db.lots.find(l => l.lote.toLowerCase() === loteNorm);
             if (loteDup) {
                 const prodLote = db.products.find(p => p.id === loteDup.productId);
-                return toast(`O lote "${lote}" já está cadastrado${prodLote ? ' em "' + prodLote.referencia + '"' : ''}.`, 'error');
+                return toast(`O lote "${lote}" já está cadastrado${prodLote ? ' em "' + prodLote.desc + '"' : ''}.`, 'error');
             }
 
             // Aviso de campos incompletos
@@ -3073,7 +3218,7 @@
 
             // Criar produto
             const pid = uid();
-            db.products.push({ id: pid, cod, ean, referencia: ref });
+            db.products.push({ id: pid, cod, ean, desc: ref });
 
             // Criar lote
             const lid = uid();
@@ -3137,7 +3282,7 @@
             const valInput = document.getElementById('f_validade_e');
             const val = valInput ? valInput.value.trim() : '';
 
-            if (!pid) return toast('Selecione um produto da lista.', 'error');
+            if (!pid) return toast('Busque e selecione o produto pelo EAN antes de registrar.', 'error');
             if (!lote) return toast('Informe o número do Lote.', 'error');
             if (!qty || qty <= 0) return toast('Informe uma quantidade válida.', 'error');
 
@@ -3157,7 +3302,7 @@
                     dataEntrada: parseDate(ent) || isoToday(),
                     dataValidade: parseDate(val) || null
                 });
-                toast(`Novo lote ${lote} criado para ${prod?.referencia}.`, 'success');
+                toast(`Novo lote ${lote} criado para ${prod?.desc}.`, 'success');
             }
 
             addHistory('entrada', pid, lote, qty, `Entrada no lote ${lote}`);
@@ -3171,7 +3316,7 @@
             const lotId = document.getElementById('f_lote_b').value;
             const qty = Number(document.getElementById('f_qty_b').value);
 
-            if (!pid) return toast('Selecione um produto.', 'error');
+            if (!pid) return toast('Busque e selecione o produto pelo EAN antes de confirmar a baixa.', 'error');
             if (!lotId) return toast('Selecione um lote.', 'error');
             if (!qty || qty <= 0) return toast('Informe uma quantidade válida.', 'error');
 
@@ -3184,7 +3329,7 @@
             confirmAction(
                 '📤',
                 `Confirmar Baixa`,
-                `Dar saída de <strong>${qty}</strong> unidades do lote <strong>${lot.lote}</strong> de "${prod?.referencia}"?`,
+                `Dar saída de <strong>${qty}</strong> unidades do lote <strong>${lot.lote}</strong> de "${prod?.desc}"?`,
                 () => {
                     lot.quantidade -= qty;
                     addHistory('saida', pid, lot.lote, qty, `Baixa no lote ${lot.lote}`);
@@ -3216,12 +3361,12 @@
                 .sort((a, b) => (a.dataValidade || '9999').localeCompare(b.dataValidade || '9999'));
             const total = lots.reduce((s, l) => s + Number(l.quantidade), 0);
 
-            document.getElementById('detailModalTitle').textContent = prod.referencia;
+            document.getElementById('detailModalTitle').textContent = prod.desc;
             document.getElementById('detailModalBody').innerHTML = `
     <div class="detail-header">
       <div class="detail-field">
-        <div class="detail-field-label">Referência</div>
-        <div class="detail-field-value">${escHtml(prod.referencia)}</div>
+        <div class="detail-field-label">Descrição</div>
+        <div class="detail-field-value">${escHtml(prod.desc)}</div>
       </div>
       <div class="detail-field">
         <div class="detail-field-label">Código</div>
@@ -3282,7 +3427,7 @@
             const prod = db.products.find(p => p.id === pid);
             if (!prod) return;
             _editingProductId = pid;
-            document.getElementById('ep_ref').value = prod.referencia || '';
+            document.getElementById('ep_ref').value = prod.desc || '';
             document.getElementById('ep_cod').value = prod.cod || '';
             document.getElementById('ep_ean').value = prod.ean || '';
             openModal('editProductModal');
@@ -3296,25 +3441,25 @@
             const cod = document.getElementById('ep_cod').value.trim();
             const ean = document.getElementById('ep_ean').value.trim();
 
-            if (!ref) return toast('A Referência (nome) não pode ficar vazia.', 'error');
+            if (!ref) return toast('A Descrição (nome) não pode ficar vazia.', 'error');
 
             // Duplicate checks (excluding self)
             const refNorm = ref.toLowerCase();
-            const dupRef = db.products.find(p => p.id !== _editingProductId && p.referencia.toLowerCase() === refNorm);
-            if (dupRef) return toast(`Já existe outro produto com a referência "${ref}".`, 'error');
+            const dupRef = db.products.find(p => p.id !== _editingProductId && p.desc.toLowerCase() === refNorm);
+            if (dupRef) return toast(`Já existe outro produto com a descrição "${ref}".`, 'error');
 
             if (cod) {
                 const dupCod = db.products.find(p => p.id !== _editingProductId && p.cod && p.cod.toLowerCase() === cod.toLowerCase());
-                if (dupCod) return toast(`Já existe outro produto com o código "${cod}" (${dupCod.referencia}).`, 'error');
+                if (dupCod) return toast(`Já existe outro produto com o código "${cod}" (${dupCod.desc}).`, 'error');
             }
 
             if (ean) {
                 const dupEan = db.products.find(p => p.id !== _editingProductId && p.ean && p.ean.toLowerCase() === ean.toLowerCase());
-                if (dupEan) return toast(`Já existe outro produto com o EAN "${ean}" (${dupEan.referencia}).`, 'error');
+                if (dupEan) return toast(`Já existe outro produto com o EAN "${ean}" (${dupEan.desc}).`, 'error');
             }
 
             const prod = db.products.find(p => p.id === _editingProductId);
-            prod.referencia = ref;
+            prod.desc = ref;
             prod.cod = cod;
             prod.ean = ean;
 
@@ -3334,7 +3479,7 @@
             db.history.unshift({
                 id: uid(),
                 type, pid, lote, qty, note,
-                referencia: _prod?.referencia || '',
+                desc: _prod?.desc || '',
                 operador: _currentOperator ? (_currentOperator.nome || _currentOperator.usuario) : '',
                 date: new Date().toISOString()
             });
@@ -3365,7 +3510,7 @@
 
             div.innerHTML = slice.map(h => {
                 const prod = db.products.find(p => p.id === h.pid);
-                const prodNome = prod?.referencia || h.referencia || '?';
+                const prodNome = prod?.desc || h.desc || '?';
                 const d = new Date(h.date);
                 const label = {
                     cadastro: 'Cadastro', entrada: 'Entrada', saida: 'Baixa',
@@ -3418,7 +3563,7 @@
             return base.filter(l => {
                 const prod = db.products.find(p => p.id === l.productId);
                 const haystack = [
-                    prod?.referencia, prod?.cod, prod?.ean,
+                    prod?.desc, prod?.cod, prod?.ean,
                     l.lote, formatDate(l.dataValidade), l.dataValidade,
                     String(l.quantidade)
                 ].filter(Boolean).join(' ').toLowerCase();
@@ -3457,7 +3602,7 @@
                 const sl = statusLabel(d);
                 return `<div class="expiring-item">
         <div>
-          <div class="expiring-name">${escHtml(prod?.referencia || '?')}</div>
+          <div class="expiring-name">${escHtml(prod?.desc || '?')}</div>
           <div class="expiring-lot">Lote: ${escHtml(l.lote)} — ${l.quantidade} un. — Val: ${formatDate(l.dataValidade)}</div>
         </div>
         <span class="badge ${sl.cls}">${sl.txt}</span>
@@ -3578,7 +3723,7 @@
                         rows.push({
                             cod: cols[idx('cod')] || '',
                             ean: cols[idx('ean')] || '',
-                            referencia: cols[idx('referencia')] || '',
+                            desc: cols[idx('desc')] || '',
                             lote: cols[idx('lote')] || '',
                             quantidade: cols[idx('quantidade')] || '0',
                             data_entrada: cols[idx('data_entrada')] || '',
@@ -3597,7 +3742,7 @@
             Object.keys(row).forEach(k => { norm[k.toLowerCase().trim()] = row[k]; });
             const cod = String(norm['cod'] || '').trim();
             const ean = String(norm['ean'] || '').trim();
-            const ref = String(norm['referencia'] || '').trim();
+            const ref = String(norm['desc'] || norm['referencia'] || '').trim();
             const lote = String(norm['lote'] || '').trim();
             const qty = Number(norm['quantidade']);
             const entRaw = norm['data_entrada'] || norm['dataentrada'] || '';
@@ -3618,7 +3763,7 @@
         function findProductForImport(cod, ean, ref) {
             return db.products.find(p =>
                 (cod && p.cod === cod) || (ean && p.ean === ean) ||
-                (ref && p.referencia.toLowerCase() === ref.toLowerCase())
+                (ref && p.desc.toLowerCase() === ref.toLowerCase())
             );
         }
 
@@ -3631,7 +3776,7 @@
                 const line = idx + 2;
 
                 if (!ref && !cod && !ean) {
-                    skipped.push({ line, reason: 'Sem identificador (cod, ean ou referencia)' });
+                    skipped.push({ line, reason: 'Sem identificador (cod, ean ou desc)' });
                     return;
                 }
                 if (!lote) {
@@ -3646,7 +3791,7 @@
                 }
 
                 const existingLot = db.lots.find(l => l.productId === prod.id && l.lote === lote);
-                const prodName = prod.referencia;
+                const prodName = prod.desc;
 
                 if (!existingLot) {
                     const newQty = qty !== null ? qty : 0;
@@ -3848,14 +3993,14 @@
                 const matched = findProductForImport('', ean, ref);
                 return {
                     idx,
-                    cod: '', ean, referencia: ref, qty,
+                    cod: '', ean, desc: ref, qty,
                     lote: '',
                     entrada: _parseNFeDate(dhEmi),
                     validade: '',
                     include: true,
                     isNew: !matched,
                     pid: matched ? matched.id : null,
-                    prodName: matched ? matched.referencia : ref
+                    prodName: matched ? matched.desc : ref
                 };
             });
 
@@ -3898,7 +4043,7 @@
                 html += `<div class="xml-item-card" id="xmlItem_${i}" data-idx="${i}">
             <div class="xml-item-header">
                 <div>
-                    <div class="xml-item-title">${escHtml(item.referencia)}</div>
+                    <div class="xml-item-title">${escHtml(item.desc)}</div>
                     <div class="xml-item-meta">
                         EAN: ${escHtml(item.ean) || '—'} · Qtd: <strong>${item.qty}</strong>
                     </div>
@@ -3987,10 +4132,10 @@
             if (!toImport.length) return toast('Nenhum item selecionado para importar.', 'info');
 
             for (const item of toImport) {
-                if (!item.lote) return toast(`Informe o lote do item: ${item.referencia}`, 'error');
-                if (!item.validade) return toast(`Informe a validade do item: ${item.referencia}`, 'error');
+                if (!item.lote) return toast(`Informe o lote do item: ${item.desc}`, 'error');
+                if (!item.validade) return toast(`Informe a validade do item: ${item.desc}`, 'error');
                 const valIso = parseDate(item.validade);
-                if (!valIso) return toast(`Data de validade inválida: ${item.referencia}`, 'error');
+                if (!valIso) return toast(`Data de validade inválida: ${item.desc}`, 'error');
             }
 
             const nNF = pendingXmlImport.nNF || '';
@@ -3999,11 +4144,11 @@
             toImport.forEach(item => {
                 const valIso = parseDate(item.validade);
                 const entIso = parseDate(item.entrada) || isoToday();
-                let prod = item.pid ? db.products.find(p => p.id === item.pid) : findProductForImport(item.cod, item.ean, item.referencia);
+                let prod = item.pid ? db.products.find(p => p.id === item.pid) : findProductForImport(item.cod, item.ean, item.desc);
 
                 if (!prod) {
                     const pid = uid();
-                    prod = { id: pid, cod: item.cod, ean: item.ean, referencia: item.referencia };
+                    prod = { id: pid, cod: item.cod, ean: item.ean, desc: item.desc };
                     db.products.push(prod);
                     db.lots.push({
                         id: uid(), productId: pid, lote: item.lote,
@@ -4067,11 +4212,11 @@
         }
 
         function exportCSV() {
-            const rows = [['cod', 'ean', 'referencia', 'lote', 'quantidade', 'data_entrada', 'data_validade']];
+            const rows = [['cod', 'ean', 'desc', 'lote', 'quantidade', 'data_entrada', 'data_validade']];
             db.lots.forEach(l => {
                 const p = db.products.find(x => x.id === l.productId);
                 if (!p) return;
-                rows.push([p.cod || '', p.ean || '', p.referencia || '', l.lote || '', l.quantidade,
+                rows.push([p.cod || '', p.ean || '', p.desc || '', l.lote || '', l.quantidade,
                 formatDate(l.dataEntrada), formatDate(l.dataValidade)]);
             });
             const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
@@ -4081,11 +4226,11 @@
 
         function exportXLSX() {
             if (typeof XLSX === 'undefined') { toast('Biblioteca XLSX não carregada.', 'error'); return; }
-            const rows = [['cod', 'ean', 'referencia', 'lote', 'quantidade', 'data_entrada', 'data_validade']];
+            const rows = [['cod', 'ean', 'desc', 'lote', 'quantidade', 'data_entrada', 'data_validade']];
             db.lots.forEach(l => {
                 const p = db.products.find(x => x.id === l.productId);
                 if (!p) return;
-                rows.push([p.cod || '', p.ean || '', p.referencia || '', l.lote || '', l.quantidade,
+                rows.push([p.cod || '', p.ean || '', p.desc || '', l.lote || '', l.quantidade,
                 formatDate(l.dataEntrada), formatDate(l.dataValidade)]);
             });
             const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -4100,7 +4245,7 @@
         function downloadTemplateXLSX() {
             if (typeof XLSX === 'undefined') { toast('Biblioteca XLSX não carregada.', 'error'); return; }
             const rows = [
-                ['cod', 'ean', 'referencia', 'lote', 'quantidade', 'data_entrada', 'data_validade'],
+                ['cod', 'ean', 'desc', 'lote', 'quantidade', 'data_entrada', 'data_validade'],
                 ['001', '7891000100103', 'Paracetamol 500mg', 'L001', 100, '10/01/2026', '10/01/2027'],
                 ['001', '7891000100103', 'Paracetamol 500mg', 'L002', 50, '15/02/2026', '15/02/2028'],
                 ['002', '7891000200204', 'Ibuprofeno 400mg', 'L003', 200, '01/03/2026', '01/03/2027'],
@@ -4118,7 +4263,7 @@
                 const p = db.products.find(x => x.id === l.productId);
                 const d = daysUntil(l.dataValidade);
                 const st = statusLabel(d);
-                return `<tr><td>${p?.referencia || ''}</td><td>${p?.cod || ''}</td><td>${p?.ean || ''}</td>
+                return `<tr><td>${p?.desc || ''}</td><td>${p?.cod || ''}</td><td>${p?.ean || ''}</td>
       <td>${l.lote}</td><td>${l.quantidade}</td>
       <td>${formatDate(l.dataEntrada)}</td><td>${formatDate(l.dataValidade)}</td>
       <td>${st.txt}</td></tr>`;
@@ -4233,11 +4378,11 @@
         function seedDemo() {
             if (db.products.length) return;
             const products = [
-                { id: 'p1', cod: '001', ean: '7891000100103', referencia: 'Paracetamol 500mg' },
-                { id: 'p2', cod: '002', ean: '7891000200204', referencia: 'Ibuprofeno 400mg' },
-                { id: 'p3', cod: '003', ean: '7891000300305', referencia: 'Dipirona Sódica 1g' },
-                { id: 'p4', cod: '004', ean: '7891000400406', referencia: 'Amoxicilina 500mg' },
-                { id: 'p5', cod: '005', ean: '7891000500507', referencia: 'Omeprazol 20mg' },
+                { id: 'p1', cod: '001', ean: '7891000100103', desc: 'Paracetamol 500mg' },
+                { id: 'p2', cod: '002', ean: '7891000200204', desc: 'Ibuprofeno 400mg' },
+                { id: 'p3', cod: '003', ean: '7891000300305', desc: 'Dipirona Sódica 1g' },
+                { id: 'p4', cod: '004', ean: '7891000400406', desc: 'Amoxicilina 500mg' },
+                { id: 'p5', cod: '005', ean: '7891000500507', desc: 'Omeprazol 20mg' },
             ];
             const lots = [
                 { id: 'l1', productId: 'p1', lote: 'L001', quantidade: 200, dataEntrada: '2025-01-10', dataValidade: '2025-12-10' },

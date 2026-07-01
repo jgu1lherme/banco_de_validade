@@ -2225,14 +2225,25 @@
             if (!db.operadores.length) db.operadores = DEFAULT_OPERADORES.slice();
         }
 
+        // Normaliza texto para comparação: minúsculas, sem acentos/diacríticos
+        // e sem espaços nas pontas. Assim "Fábio", "fabio" e "FÁBIO" batem.
+        function _normalizeForCompare(str) {
+            return String(str || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '') // remove acentos
+                .toLowerCase()
+                .trim();
+        }
+
         function submitOperatorLogin() {
             const user = document.getElementById('operatorUser')?.value.trim();
             const pwd = document.getElementById('operatorPassword')?.value;
             if (!user) return toast('Informe o usuário do operador.', 'error');
             if (!pwd) return toast('Informe a senha do operador.', 'error');
 
+            const userNorm = _normalizeForCompare(user);
             const op = _getOperadoresList().find(o =>
-                o.usuario.toLowerCase() === user.toLowerCase() &&
+                _normalizeForCompare(o.usuario) === userNorm &&
                 o.senha === pwd &&
                 o.ativo !== 'nao' && o.ativo !== 'não' && o.ativo !== '0' && o.ativo !== 'false'
             );

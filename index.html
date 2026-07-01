@@ -301,6 +301,7 @@
         }
 
         .auth-card {
+            position: relative;
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: var(--radius);
@@ -309,6 +310,44 @@
             width: 100%;
             text-align: center;
             box-shadow: var(--shadow-lg);
+        }
+
+        .auth-loading-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            background: var(--surface);
+            border-radius: var(--radius);
+        }
+
+        .auth-loading-overlay.hidden {
+            display: none;
+        }
+
+        .auth-spinner {
+            width: 34px;
+            height: 34px;
+            border: 3px solid var(--border);
+            border-top-color: var(--cyan);
+            border-radius: 50%;
+            animation: auth-spin .8s linear infinite;
+        }
+
+        .auth-loading-text {
+            color: var(--text2);
+            font-size: .85rem;
+            font-weight: 500;
+        }
+
+        @keyframes auth-spin {
+            to {
+                transform: rotate(360deg);
+            }
         }
 
         .auth-card h2 {
@@ -1436,6 +1475,10 @@
             <p>Entre com sua conta Google autorizada para acessar o estoque na nuvem.</p>
             <div id="googleSignInBtn" style="display:flex;justify-content:center"></div>
             <p id="authError" class="auth-error"></p>
+            <div id="authLoadingOverlay" class="auth-loading-overlay hidden">
+                <div class="auth-spinner"></div>
+                <p class="auth-loading-text">Verificando acesso…</p>
+            </div>
         </div>
     </div>
 
@@ -2105,9 +2148,23 @@
             document.getElementById('userBadge').textContent = '';
             _updateOperatorBadge();
             if (msg) document.getElementById('authError').textContent = msg;
+            hideAuthLoading();
+        }
+
+        function showAuthLoading(text) {
+            const overlay = document.getElementById('authLoadingOverlay');
+            if (!overlay) return;
+            const textEl = overlay.querySelector('.auth-loading-text');
+            if (textEl && text) textEl.textContent = text;
+            overlay.classList.remove('hidden');
+        }
+
+        function hideAuthLoading() {
+            document.getElementById('authLoadingOverlay')?.classList.add('hidden');
         }
 
         function showOperatorGate(msg) {
+            hideAuthLoading();
             document.getElementById('authGate').classList.add('hidden');
             document.getElementById('operatorGate').classList.remove('hidden');
             document.getElementById('appContent').classList.add('locked');
@@ -2219,8 +2276,10 @@
             _googleUserEmail = parseJwtEmail(_googleIdToken);
             document.getElementById('authError').textContent = '';
             document.getElementById('backupStatus').textContent = 'Verificando acesso…';
+            showAuthLoading('Verificando acesso…');
             try {
                 await cloudApiCall('ping');
+                showAuthLoading('Carregando dados…');
                 await loadDB();
                 showOperatorGate('');
             } catch (e) {
@@ -2901,11 +2960,11 @@
         </div>
         <div class="form-group">
           <label class="form-label">Data de Entrada</label>
-          <input class="form-input" id="f_entrada" placeholder="${today}" value="${today}">
+          <input class="form-input" id="f_entrada" placeholder="${today}" value="${today}" inputmode="numeric" maxlength="10" oninput="maskDateInput(this)">
         </div>
         <div class="form-group">
           <label class="form-label">Data de Validade</label>
-          <input class="form-input" id="f_validade" placeholder="DD/MM/AAAA">
+          <input class="form-input" id="f_validade" placeholder="DD/MM/AAAA" inputmode="numeric" maxlength="10" oninput="maskDateInput(this)">
         </div>
       </div>
       <div class="form-footer">
@@ -2941,11 +3000,11 @@
         </div>
         <div class="form-group">
           <label class="form-label">Data de Entrada</label>
-          <input class="form-input" id="f_entrada_e" placeholder="${today}" value="${today}" disabled>
+          <input class="form-input" id="f_entrada_e" placeholder="${today}" value="${today}" inputmode="numeric" maxlength="10" oninput="maskDateInput(this)" disabled>
         </div>
         <div class="form-group">
           <label class="form-label">Data de Validade</label>
-          <input class="form-input" id="f_validade_e" placeholder="DD/MM/AAAA" disabled>
+          <input class="form-input" id="f_validade_e" placeholder="DD/MM/AAAA" inputmode="numeric" maxlength="10" oninput="maskDateInput(this)" disabled>
         </div>
       </div>
       <div id="loteExistenteInfo" style="margin:0 0 8px"></div>
@@ -2990,6 +3049,22 @@
       </div>
     </div>`;
             }
+        }
+
+        // ============================================================
+        //  MÁSCARA DE DATA (DD/MM/AAAA) — digita só números, barras
+        //  são inseridas automaticamente. Ex: digitar 07082004 vira
+        //  07/08/2004 conforme a pessoa digita.
+        // ============================================================
+        function maskDateInput(el) {
+            let digits = el.value.replace(/\D/g, '').slice(0, 8);
+            let out = digits;
+            if (digits.length > 4) {
+                out = digits.slice(0, 2) + '/' + digits.slice(2, 4) + '/' + digits.slice(4);
+            } else if (digits.length > 2) {
+                out = digits.slice(0, 2) + '/' + digits.slice(2);
+            }
+            el.value = out;
         }
 
         // ============================================================
@@ -4067,11 +4142,11 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">Data Entrada</label>
-                    <input class="form-input" id="xmlEntrada_${i}" placeholder="DD/MM/AAAA" value="${escHtml(item.entrada)}">
+                    <input class="form-input" id="xmlEntrada_${i}" placeholder="DD/MM/AAAA" value="${escHtml(item.entrada)}" inputmode="numeric" maxlength="10" oninput="maskDateInput(this)">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Data Validade <span class="req">*</span></label>
-                    <input class="form-input" id="xmlValidade_${i}" placeholder="DD/MM/AAAA" value="${escHtml(item.validade)}">
+                    <input class="form-input" id="xmlValidade_${i}" placeholder="DD/MM/AAAA" value="${escHtml(item.validade)}" inputmode="numeric" maxlength="10" oninput="maskDateInput(this)">
                 </div>
             </div>
         </div>`;
